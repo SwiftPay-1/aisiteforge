@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { motion } from "framer-motion";
-import { Globe, Wand2, CreditCard, ArrowRight, Zap, TrendingUp } from "lucide-react";
+import { Globe, Wand2, CreditCard, ArrowRight, Zap, TrendingUp, Crown } from "lucide-react";
+import ProBadge from "@/components/ProBadge";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,8 +33,10 @@ export default function DashboardPage() {
   const stats = [
     { label: "Websites Created", value: String(websiteCount), icon: Globe, color: "text-primary" },
     { label: "Today's Generations", value: `${todayUsage}/${dailyLimit}`, icon: Wand2, color: "text-accent" },
-    { label: "Current Plan", value: plan, icon: CreditCard, color: "text-primary" },
+    { label: "Current Plan", value: plan, icon: plan === "Pro" ? Crown : CreditCard, color: plan === "Pro" ? "text-accent" : "text-primary" },
   ];
+
+  const isPro = plan === "Pro";
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -43,7 +46,10 @@ export default function DashboardPage() {
             <Zap className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="font-display text-2xl md:text-3xl font-bold">Welcome back, {name} 👋</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-2xl md:text-3xl font-bold">Welcome back, {name} 👋</h1>
+              {isPro && <ProBadge />}
+            </div>
             <p className="text-muted-foreground text-sm">Here's your SiteForge AI overview.</p>
           </div>
         </div>

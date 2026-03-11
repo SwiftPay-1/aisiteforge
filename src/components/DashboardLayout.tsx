@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import NotificationBell from "@/components/NotificationBell";
+import ProBadge from "@/components/ProBadge";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -19,19 +21,19 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [plan, setPlan] = useState("free");
 
   useEffect(() => {
     if (!user) return;
-    const checkAdmin = async () => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .single();
-      setIsAdmin(!!data);
+    const fetchData = async () => {
+      const [{ data: roleData }, { data: profileData }] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").single(),
+        supabase.from("profiles").select("plan").eq("user_id", user.id).single(),
+      ]);
+      setIsAdmin(!!roleData);
+      setPlan(profileData?.plan || "free");
     };
-    checkAdmin();
+    fetchData();
   }, [user]);
 
   const handleLogout = async () => {
@@ -61,12 +63,16 @@ export default function DashboardLayout() {
 
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card/80 backdrop-blur-sm hidden md:flex flex-col relative z-10">
-        <Link to="/" className="flex items-center gap-2 p-4 border-b border-border">
-          <div className="gradient-bg rounded-lg p-1.5">
-            <Zap className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold">SiteForge AI</span>
-        </Link>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <Link to="/" className="flex items-center gap-2">
+            <div className="gradient-bg rounded-lg p-1.5">
+              <Zap className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <span className="font-display font-bold">SiteForge AI</span>
+            {plan === "pro" && <ProBadge />}
+          </Link>
+          <NotificationBell />
+        </div>
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => (
             <Link
@@ -110,10 +116,14 @@ export default function DashboardLayout() {
               <Zap className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-display font-bold text-sm">SiteForge AI</span>
+            {plan === "pro" && <ProBadge />}
           </Link>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </header>
         {/* Mobile bottom nav */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t border-border flex justify-around py-2 z-50">

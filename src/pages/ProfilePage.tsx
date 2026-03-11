@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
 import { User, Camera } from "lucide-react";
+import ProBadge from "@/components/ProBadge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -71,9 +72,11 @@ export default function ProfilePage() {
           <div>
             <p className="font-display font-semibold text-lg">{name || "User"}</p>
             <p className="text-sm text-muted-foreground">{user?.email}</p>
-            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted"}`}>
-              {plan === "pro" ? "Pro Plan" : "Free Plan"}
-            </span>
+            {plan === "pro" ? (
+              <ProBadge className="mt-1" />
+            ) : (
+              <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted">Free Plan</span>
+            )}
           </div>
         </div>
         <form onSubmit={handleSave} className="space-y-4">
