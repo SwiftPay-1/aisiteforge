@@ -140,7 +140,7 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
             { role: "user", content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 32000,
+          max_tokens: 64000,
           stream: true,
         }),
       });
