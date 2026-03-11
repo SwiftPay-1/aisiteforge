@@ -95,35 +95,32 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an elite website developer. Return ONLY raw JSON with keys: html, css, js, sections. NO markdown, NO backticks.
+    const systemPrompt = `You are an elite website developer. You MUST return ONLY a raw JSON object. ABSOLUTELY NO markdown, NO backticks, NO explanation text before or after.
 
-CRITICAL RULES:
-1. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
-2. Keep HTML CONCISE - use short class names, avoid excessive nesting.
-3. Use https://placehold.co/ for images. Use Font Awesome 6 icons.
-4. "css" = complete CSS with @import for Google Fonts and Font Awesome CDN.
-5. "js" = complete JavaScript for interactivity.
-6. "sections" = [{type, title, content}] array.
+The JSON object must have exactly these keys: "html", "css", "js", "sections".
 
-IMPORTANT - COMPLETENESS OVER DETAIL:
-- It is CRITICAL that ALL HTML tags are properly opened AND closed.
-- Keep each section focused and concise rather than overly detailed.
-- Use 4-5 sections max: Nav, Hero, Features/About, Contact, Footer.
-- Each menu/list should have 3-4 items max, not 8+.
-- Prefer CSS classes over inline styles.
+CRITICAL OUTPUT FORMAT:
+- Start your response with { and end with }
+- Do NOT wrap in \`\`\`json or \`\`\` blocks
+- "html" = inner body HTML only. NEVER include <!DOCTYPE>, <html>, <head>, <body> tags.
+- "css" = complete CSS including @import statements.
+- "js" = complete JavaScript code.
+- "sections" = array of {type, title, content} objects describing each section.
 
-CSS REQUIREMENTS:
-- CSS custom properties for colors/fonts.
-- Google Font @import. Font Awesome @import: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css
-- Responsive design with flexbox/grid. Smooth transitions.
-- Professional color palette with good contrast.
-
-JS REQUIREMENTS:
-- Smooth scroll, mobile menu toggle, scroll animations via IntersectionObserver.
-- Form validation if contact form exists.
+CONTENT RULES:
+- Keep HTML CONCISE. Use short class names. Avoid deep nesting.
+- Use https://placehold.co/ for placeholder images.
+- Use Font Awesome 6 via CDN: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
+- Use 4-5 sections MAXIMUM: Nav, Hero, Features/About, Contact, Footer.
+- Each list/menu: 3-4 items max.
+- ALL HTML tags MUST be properly closed.
+- Use CSS custom properties for theming.
+- Include Google Font @import in CSS.
+- Responsive design with flexbox/grid.
+- JS: smooth scroll, mobile menu toggle, IntersectionObserver animations.
 
 Theme: ${theme}. Category: ${category}.
-Produce COMPLETE, valid JSON. Every tag must be closed. Quality over quantity.`;
+Quality over quantity. Every tag must be closed. Return COMPLETE valid JSON only.`;
 
     const userPrompt = `Build a professional ${theme} website for "${businessName}" (${category}).
 Description: ${description}
@@ -143,7 +140,7 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
             { role: "user", content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 32000,
+          max_tokens: 64000,
           stream: true,
         }),
       });
@@ -238,7 +235,7 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 32000,
+        max_tokens: 64000,
       }),
     });
 
