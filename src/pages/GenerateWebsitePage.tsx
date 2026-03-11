@@ -128,12 +128,10 @@ export default function GenerateWebsitePage() {
         }
       }
 
-      // Parse the final content
+      // Parse the final content with robust cleaning
       let parsed: GeneratedWebsite;
       try {
-        const jsonMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-        const jsonStr = jsonMatch ? jsonMatch[1].trim() : fullContent.trim();
-        parsed = JSON.parse(jsonStr);
+        parsed = cleanAndParseAIOutput(fullContent);
       } catch {
         parsed = { html: fullContent, css: "", js: "", sections: [] };
       }
