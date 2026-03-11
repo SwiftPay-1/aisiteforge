@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Globe, CreditCard, BarChart3, Check, X, Search, Shield, Crown, Edit } from "lucide-react";
+import { Users, Globe, CreditCard, BarChart3, Check, X, Search, Shield, Crown, Edit, Code2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -20,6 +22,21 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [newPlan, setNewPlan] = useState("");
+
+  // Developer settings state
+  const [devSettings, setDevSettings] = useState({
+    id: "",
+    name: "",
+    bio: "",
+    avatar_url: "",
+    email: "",
+    website_url: "",
+    github_url: "",
+    twitter_url: "",
+  });
+  const [devDialogOpen, setDevDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [savingDev, setSavingDev] = useState(false);
 
   useEffect(() => {
     checkAdminAndFetch();
@@ -41,15 +58,19 @@ export default function AdminPage() {
     }
     setIsAdmin(true);
 
-    const [{ data: p }, { data: w }, { data: pay }] = await Promise.all([
+    const [{ data: p }, { data: w }, { data: pay }, { data: devData }] = await Promise.all([
       supabase.from("profiles").select("*"),
       supabase.from("websites").select("*"),
       supabase.from("payments").select("*").order("created_at", { ascending: false }),
+      supabase.from("developer_settings").select("*").limit(1).single(),
     ]);
 
     setProfiles(p || []);
     setWebsites(w || []);
     setPayments(pay || []);
+    if (devData) {
+      setDevSettings(devData as any);
+    }
     setLoading(false);
   };
 
@@ -76,6 +97,40 @@ export default function AdminPage() {
     setProfiles((prev) => prev.map((p) => p.user_id === editingUser.user_id ? { ...p, plan: newPlan } : p));
     toast.success(`Plan updated to ${newPlan}`);
     setEditingUser(null);
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `developer/avatar-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (error) {
+      toast.error("Upload failed");
+      setUploading(false);
+      return;
+    }
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    setDevSettings((prev) => ({ ...prev, avatar_url: urlData.publicUrl }));
+    setUploading(false);
+    toast.success("Avatar uploaded");
+  };
+
+  const handleSaveDevSettings = async () => {
+    setSavingDev(true);
+    const { id, ...rest } = devSettings;
+    const { error } = await supabase
+      .from("developer_settings")
+      .update({ ...rest, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      toast.error("Failed to save");
+    } else {
+      toast.success("Developer info updated!");
+      setDevDialogOpen(false);
+    }
+    setSavingDev(false);
   };
 
   if (loading) {
@@ -114,9 +169,15 @@ export default function AdminPage() {
       <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
-        <div className="flex items-center gap-2 mb-1">
-          <Shield className="h-6 w-6 text-primary" />
-          <h1 className="font-display text-3xl font-bold">Admin Panel</h1>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Shield className="h-6 w-6 text-primary" />
+            <h1 className="font-display text-3xl font-bold">Admin Panel</h1>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={() => setDevDialogOpen(true)}>
+            <Code2 className="h-4 w-4" />
+            Edit Developer Info
+          </Button>
         </div>
         <p className="text-muted-foreground mb-8">Manage users, websites, and payments.</p>
       </motion.div>
@@ -280,6 +341,71 @@ export default function AdminPage() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
               <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleUpdatePlan}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Developer Info Dialog */}
+      <Dialog open={devDialogOpen} onOpenChange={setDevDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display">Edit Developer Info</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            {/* Avatar */}
+            <div className="flex items-center gap-4">
+              {devSettings.avatar_url ? (
+                <img src={devSettings.avatar_url} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary/30" />
+              ) : (
+                <div className="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-xl font-display font-bold text-primary-foreground">
+                  {devSettings.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <Label className="text-xs text-muted-foreground">Profile Picture</Label>
+                <div className="mt-1">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-sm transition-colors">
+                    <Upload className="h-3.5 w-3.5" />
+                    {uploading ? "Uploading..." : "Upload Photo"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploading} />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Display Name</Label>
+                <Input value={devSettings.name} onChange={(e) => setDevSettings((p) => ({ ...p, name: e.target.value }))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Bio</Label>
+                <Textarea value={devSettings.bio} onChange={(e) => setDevSettings((p) => ({ ...p, bio: e.target.value }))} className="mt-1" rows={3} />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Email</Label>
+                <Input value={devSettings.email} onChange={(e) => setDevSettings((p) => ({ ...p, email: e.target.value }))} className="mt-1" placeholder="developer@example.com" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Website URL</Label>
+                <Input value={devSettings.website_url} onChange={(e) => setDevSettings((p) => ({ ...p, website_url: e.target.value }))} className="mt-1" placeholder="https://yoursite.com" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">GitHub URL</Label>
+                <Input value={devSettings.github_url} onChange={(e) => setDevSettings((p) => ({ ...p, github_url: e.target.value }))} className="mt-1" placeholder="https://github.com/username" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Twitter/X URL</Label>
+                <Input value={devSettings.twitter_url} onChange={(e) => setDevSettings((p) => ({ ...p, twitter_url: e.target.value }))} className="mt-1" placeholder="https://x.com/username" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDevDialogOpen(false)}>Cancel</Button>
+              <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleSaveDevSettings} disabled={savingDev}>
+                {savingDev ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
           </div>
         </DialogContent>
