@@ -141,29 +141,34 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are a website builder AI. Generate a single-page website as a JSON object.
+    const systemPrompt = `You are a website builder. Output a JSON object with keys: html, css, js, sections.
 
-CRITICAL RULES:
-1. Return ONLY a raw JSON object. No markdown, no backticks, no explanation.
-2. The JSON must have exactly these 4 keys: "html", "css", "js", "sections"
-3. "html" = ONLY the inner body content. NO <!DOCTYPE>, <html>, <head>, or <body> tags.
-4. "css" = Complete CSS including @import for Google Fonts at the top. Use clean, valid CSS.
-5. "js" = JavaScript for interactivity (mobile menu, smooth scroll, animations).
-6. "sections" = Array of {type, title, content} describing each section.
-7. Keep CSS concise. Use shorthand properties. Avoid redundant rules.
-8. All HTML tags must be properly opened and closed.
-9. All CSS properties must be complete and valid (no truncated values).
-10. Use https://placehold.co/ for placeholder images.
-11. Include: navbar, hero, about, services, contact, footer sections.
-12. Make it responsive with media queries.
-13. Theme: ${theme}
+RULES:
+1. Return ONLY raw JSON. No markdown. No backticks. No explanation text.
+2. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
+3. "css" = all CSS. Include @import for Google Fonts. Keep it SHORT and VALID.
+4. "js" = JavaScript for menu toggle, smooth scroll, scroll animations.
+5. "sections" = [{type, title, content}] array describing each section.
 
-IMPORTANT: Keep the total output under 4000 tokens. Be efficient with code. Do NOT add unnecessary comments.`;
+CRITICAL CSS RULES:
+- Every CSS property MUST be complete. Never truncate values.
+- Use shorthand properties (margin, padding, background, border, font).
+- Combine selectors that share styles.
+- NO duplicate rules. NO excessive comments.
+- Keep total CSS under 200 lines.
+- Use CSS variables for repeated values.
 
-    const userPrompt = `Create a ${theme} website for "${businessName}" (${category}).
-Description: ${description}
+CRITICAL HTML RULES:
+- Every tag must be properly closed.
+- Use semantic HTML (header, nav, main, section, footer).
+- Use Font Awesome CDN for icons: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css (add as @import in CSS)
+- Use https://placehold.co/ for images.
 
-Return the JSON now.`;
+Include sections: navbar, hero, about, services/skills, projects, contact form, footer.
+Theme: ${theme}. Make it responsive.
+Keep total output COMPACT - under 3500 tokens.`;
+
+    const userPrompt = `Build a ${theme} website for "${businessName}" (${category}). ${description}. Return JSON now.`;
 
     if (stream) {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -179,7 +184,7 @@ Return the JSON now.`;
             { role: "user", content: userPrompt },
           ],
           temperature: 0.6,
-          max_tokens: 8000,
+          max_tokens: 16000,
           stream: true,
         }),
       });
@@ -275,7 +280,7 @@ Return the JSON now.`;
           { role: "user", content: userPrompt },
         ],
         temperature: 0.6,
-        max_tokens: 8000,
+        max_tokens: 16000,
       }),
     });
 
