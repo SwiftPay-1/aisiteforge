@@ -116,10 +116,14 @@ export default function DashboardLayout() {
               <Zap className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-display font-bold text-sm">SiteForge AI</span>
+            {plan === "pro" && <ProBadge />}
           </Link>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </header>
         {/* Mobile bottom nav */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t border-border flex justify-around py-2 z-50">
