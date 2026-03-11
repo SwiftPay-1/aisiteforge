@@ -28,32 +28,40 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an elite website editor and full-stack developer. You will receive existing website code (HTML, CSS, JS) and a user's edit request.
-
-Apply the requested changes and return the COMPLETE updated code as a JSON object with keys: html, css, js.
+    const systemPrompt = `You are an elite website editor. You receive existing website code and a user's edit request.
+Apply the requested changes and return the COMPLETE updated code.
 
 RULES:
-1. Return ONLY raw JSON. No markdown. No backticks. No explanation.
-2. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
-3. "css" = all CSS including @import for fonts.
-4. "js" = all JavaScript.
-5. Preserve ALL existing functionality unless the user asks to remove it.
-6. Apply ONLY the changes the user requested.
-7. Maintain professional design quality - proper spacing, typography, colors.
+1. HTML = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
+2. CSS = all CSS including @import for fonts.
+3. JS = all JavaScript.
+4. Preserve ALL existing functionality unless the user asks to remove it.
+5. Apply ONLY the changes the user requested.
+6. Maintain professional design quality.
+7. Keep responsive design intact.`;
 
-MULTI-LANGUAGE BACKEND SUPPORT:
-- If user asks to add backend code (Python, Flask, PHP, C, C++, MySQL, SQLite, etc.), include it as commented instructions or setup scripts within the JS section.
-- For Python/Flask: provide a complete app.py structure as a comment block.
-- For database: provide SQL schema and setup instructions.
-- For any language: provide clear, runnable code examples.
+    const userPrompt = `Current HTML:\n${currentHtml || "(empty)"}\n\nCurrent CSS:\n${currentCss || "(empty)"}\n\nCurrent JS:\n${currentJs || "(empty)"}\n\nUser's edit request: ${prompt}\n\nApply the changes now.`;
 
-DESIGN QUALITY:
-- Ensure all changes maintain visual consistency.
-- Use smooth transitions and modern CSS.
-- Keep responsive design intact.
-- Use proper color contrast and spacing.`;
-
-    const userPrompt = `Current HTML:\n${currentHtml || "(empty)"}\n\nCurrent CSS:\n${currentCss || "(empty)"}\n\nCurrent JS:\n${currentJs || "(empty)"}\n\nUser's edit request: ${prompt}\n\nApply the changes and return the updated JSON now.`;
+    // Use tool calling for guaranteed structured output
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "update_website",
+          description: "Return the complete updated website code after applying edits",
+          parameters: {
+            type: "object",
+            properties: {
+              html: { type: "string", description: "Complete updated inner body HTML" },
+              css: { type: "string", description: "Complete updated CSS" },
+              js: { type: "string", description: "Complete updated JavaScript" },
+            },
+            required: ["html", "css", "js"],
+            additionalProperties: false
+          }
+        }
+      }
+    ];
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -67,8 +75,10 @@ DESIGN QUALITY:
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
+        tools,
+        tool_choice: { type: "function", function: { name: "update_website" } },
         temperature: 0.5,
-        max_tokens: 16000,
+        max_tokens: 64000,
       }),
     });
 
@@ -89,18 +99,33 @@ DESIGN QUALITY:
     }
 
     const aiData = await response.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || "";
+    
+    let updatedData: { html: string; css: string; js: string };
+    
+    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      try {
+        const args = JSON.parse(toolCall.function.arguments);
+        updatedData = {
+          html: args.html || currentHtml || "",
+          css: args.css || currentCss || "",
+          js: args.js || currentJs || "",
+        };
+      } catch {
+        throw new Error("Failed to parse AI response");
+      }
+    } else {
+      // Fallback
+      const rawContent = aiData.choices?.[0]?.message?.content || "";
+      const parsed = cleanAndParseJSON(rawContent);
+      if (!parsed) throw new Error("Failed to parse AI response");
+      updatedData = {
+        html: (parsed.html as string) || currentHtml || "",
+        css: (parsed.css as string) || currentCss || "",
+        js: (parsed.js as string) || currentJs || "",
+      };
+    }
 
-    const parsed = cleanAndParseJSON(rawContent);
-    if (!parsed) throw new Error("Failed to parse AI response");
-
-    const updatedData = {
-      html: (parsed.html as string) || currentHtml || "",
-      css: (parsed.css as string) || currentCss || "",
-      js: (parsed.js as string) || currentJs || "",
-    };
-
-    // Save to DB if websiteId provided
     if (websiteId) {
       const adminClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -134,34 +159,8 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
   if (firstBrace === -1) return null;
-  if (lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  } else {
-    cleaned = cleaned.substring(firstBrace);
-    cleaned = repairJSON(cleaned);
-  }
+  if (lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-  try { return JSON.parse(cleaned); } catch {
-    try { return JSON.parse(repairJSON(cleaned)); } catch { return null; }
-  }
-}
-
-function repairJSON(json: string): string {
-  let result = json.replace(/,\s*$/, "");
-  let inString = false, escape = false;
-  const stack: string[] = [];
-  for (let i = 0; i < result.length; i++) {
-    const ch = result[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\") { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") stack.push("}");
-    else if (ch === "[") stack.push("]");
-    else if (ch === "}" || ch === "]") stack.pop();
-  }
-  if (inString) result += '"';
-  while (stack.length > 0) result += stack.pop();
-  return result;
+  try { return JSON.parse(cleaned); } catch { return null; }
 }

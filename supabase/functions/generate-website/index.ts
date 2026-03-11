@@ -6,43 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
-  let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-  if (firstBrace === -1) return null;
-  if (lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  } else {
-    cleaned = cleaned.substring(firstBrace);
-    cleaned = repairTruncatedJSON(cleaned);
-  }
-  cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
-  cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-  try { return JSON.parse(cleaned); } catch {
-    try { return JSON.parse(repairTruncatedJSON(cleaned)); } catch { return null; }
-  }
-}
-
-function repairTruncatedJSON(json: string): string {
-  let result = json.replace(/,\s*$/, "");
-  let inString = false, escape = false;
-  const stack: string[] = [];
-  for (let i = 0; i < result.length; i++) {
-    const ch = result[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\") { escape = true; continue; }
-    if (ch === '"' && !escape) { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") stack.push("}");
-    else if (ch === "[") stack.push("]");
-    else if (ch === "}" || ch === "]") stack.pop();
-  }
-  if (inString) result += '"';
-  while (stack.length > 0) result += stack.pop();
-  return result;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -90,138 +53,72 @@ serve(async (req) => {
       }
     }
 
-    const { businessName, category, description, theme, stream } = await req.json();
+    const { businessName, category, description, theme } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an elite website developer. You MUST return ONLY a raw JSON object. ABSOLUTELY NO markdown, NO backticks, NO explanation text before or after.
+    const systemPrompt = `You are an elite website developer. Build a stunning, complete, professional website.
 
-The JSON object must have exactly these keys: "html", "css", "js", "sections".
-
-CRITICAL OUTPUT FORMAT:
-- Start your response with { and end with }
-- Do NOT wrap in \`\`\`json or \`\`\` blocks
-- "html" = inner body HTML only. NEVER include <!DOCTYPE>, <html>, <head>, <body> tags.
-- "css" = complete CSS including @import statements.
-- "js" = complete JavaScript code.
-- "sections" = array of {type, title, content} objects describing each section.
-
-CONTENT RULES:
-- Keep HTML CONCISE. Use short class names. Avoid deep nesting.
-- Use https://placehold.co/ for placeholder images.
-- Use Font Awesome 6 via CDN: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
-- Use 4-5 sections MAXIMUM: Nav, Hero, Features/About, Contact, Footer.
-- Each list/menu: 3-4 items max.
+RULES:
+- HTML = inner body HTML only. NEVER include <!DOCTYPE>, <html>, <head>, <body> tags.
+- CSS = complete CSS with @import for Google Fonts and Font Awesome 6 CDN.
+- JS = complete JavaScript for smooth scroll, mobile menu, animations.
+- Use https://placehold.co/ for images.
+- Use Font Awesome 6: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
+- 4-5 sections: Nav, Hero, About/Features, Contact, Footer.
+- Responsive design with flexbox/grid, CSS custom properties.
 - ALL HTML tags MUST be properly closed.
-- Use CSS custom properties for theming.
-- Include Google Font @import in CSS.
-- Responsive design with flexbox/grid.
-- JS: smooth scroll, mobile menu toggle, IntersectionObserver animations.
-
-Theme: ${theme}. Category: ${category}.
-Quality over quantity. Every tag must be closed. Return COMPLETE valid JSON only.`;
+- Quality over quantity. Professional and polished.`;
 
     const userPrompt = `Build a professional ${theme} website for "${businessName}" (${category}).
 Description: ${description}
-Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
+Make it polished with 4-5 sections.`;
 
-    if (stream) {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-pro",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.7,
-          max_tokens: 64000,
-          stream: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI gateway error:", response.status, errorText);
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit reached. Please try again in a moment." }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "AI credits exhausted. Please try again later." }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: "AI generation failed" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const decoder = new TextDecoder();
-      let fullContent = "";
-
-      const transformStream = new TransformStream({
-        async transform(chunk, controller) {
-          const text = decoder.decode(chunk);
-          fullContent += extractContent(text);
-          controller.enqueue(chunk);
-        },
-        async flush() {
-          try {
-            const parsed = cleanAndParseJSON(fullContent);
-            const websiteData = parsed || {
-              html: fullContent, css: "", js: "",
-              sections: [{ type: "hero", title: businessName, content: description }],
-            };
-
-            await adminClient.from("websites").insert({
-              user_id: user.id, name: businessName, category, description, theme,
-              html_content: (websiteData.html as string) || "",
-              css_content: (websiteData.css as string) || "",
-              js_content: (websiteData.js as string) || "",
-              preview_data: (websiteData.sections as unknown[]) || [],
-            });
-
-            const { data: existingUsage } = await adminClient
-              .from("daily_usage")
-              .select("id, generation_count")
-              .eq("user_id", user.id)
-              .eq("usage_date", today)
-              .single();
-
-            if (existingUsage) {
-              await adminClient.from("daily_usage")
-                .update({ generation_count: existingUsage.generation_count + 1 })
-                .eq("id", existingUsage.id);
-            } else {
-              await adminClient.from("daily_usage")
-                .insert({ user_id: user.id, usage_date: today, generation_count: 1 });
-            }
-          } catch (e) {
-            console.error("DB save error after stream:", e);
+    // Use tool calling to FORCE structured JSON output
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "create_website",
+          description: "Create a complete website with HTML, CSS, and JavaScript",
+          parameters: {
+            type: "object",
+            properties: {
+              html: {
+                type: "string",
+                description: "Complete inner body HTML (no DOCTYPE/html/head/body wrapper tags). Must include all sections."
+              },
+              css: {
+                type: "string",
+                description: "Complete CSS including @import for fonts and icon libraries. Include all styles."
+              },
+              js: {
+                type: "string",
+                description: "Complete JavaScript for interactivity: smooth scroll, mobile menu toggle, animations."
+              },
+              sections: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string" },
+                    title: { type: "string" },
+                    content: { type: "string" }
+                  },
+                  required: ["type", "title", "content"],
+                  additionalProperties: false
+                },
+                description: "Array describing each section of the website"
+              }
+            },
+            required: ["html", "css", "js", "sections"],
+            additionalProperties: false
           }
         }
-      });
+      }
+    ];
 
-      const readableStream = response.body!.pipeThrough(transformStream);
-
-      return new Response(readableStream, {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-        },
-      });
-    }
-
-    // Non-streaming fallback
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -234,14 +131,18 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
+        tools,
+        tool_choice: { type: "function", function: { name: "create_website" } },
         temperature: 0.7,
         max_tokens: 64000,
       }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("AI gateway error:", response.status, errorText);
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "AI rate limit reached. Please try again in a moment." }), {
+        return new Response(JSON.stringify({ error: "Rate limit reached. Please try again in a moment." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -250,31 +151,61 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
       throw new Error("AI generation failed");
     }
 
     const aiData = await response.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || "";
-
-    const parsed = cleanAndParseJSON(rawContent);
-    const websiteData = parsed || {
-      html: rawContent, css: "", js: "",
-      sections: [
-        { type: "hero", title: businessName, content: description },
-        { type: "about", title: "About Us", content: `${businessName} is a leading ${category} company.` },
-      ],
-    };
+    
+    // Extract from tool call response
+    let websiteData: { html: string; css: string; js: string; sections: unknown[] };
+    
+    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      try {
+        const args = JSON.parse(toolCall.function.arguments);
+        websiteData = {
+          html: args.html || "",
+          css: args.css || "",
+          js: args.js || "",
+          sections: args.sections || [],
+        };
+      } catch {
+        // Fallback: try to parse content directly
+        const rawContent = aiData.choices?.[0]?.message?.content || "";
+        const parsed = cleanAndParseJSON(rawContent);
+        websiteData = parsed ? {
+          html: (parsed.html as string) || "",
+          css: (parsed.css as string) || "",
+          js: (parsed.js as string) || "",
+          sections: (parsed.sections as unknown[]) || [],
+        } : {
+          html: rawContent, css: "", js: "",
+          sections: [{ type: "hero", title: businessName, content: description }],
+        };
+      }
+    } else {
+      // Fallback for non-tool-call response
+      const rawContent = aiData.choices?.[0]?.message?.content || "";
+      const parsed = cleanAndParseJSON(rawContent);
+      websiteData = parsed ? {
+        html: (parsed.html as string) || "",
+        css: (parsed.css as string) || "",
+        js: (parsed.js as string) || "",
+        sections: (parsed.sections as unknown[]) || [],
+      } : {
+        html: rawContent, css: "", js: "",
+        sections: [{ type: "hero", title: businessName, content: description }],
+      };
+    }
 
     const { data: website, error: dbError } = await adminClient
       .from("websites")
       .insert({
         user_id: user.id, name: businessName, category, description, theme,
-        html_content: (websiteData.html as string) || "",
-        css_content: (websiteData.css as string) || "",
-        js_content: (websiteData.js as string) || "",
-        preview_data: (websiteData.sections as unknown[]) || [],
+        html_content: websiteData.html,
+        css_content: websiteData.css,
+        js_content: websiteData.js,
+        preview_data: websiteData.sections,
       })
       .select()
       .single();
@@ -284,6 +215,7 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
       throw new Error("Failed to save website");
     }
 
+    // Update daily usage
     const { data: existingUsage } = await adminClient
       .from("daily_usage")
       .select("id, generation_count")
@@ -313,16 +245,15 @@ Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
   }
 });
 
-function extractContent(sseText: string): string {
-  let content = "";
-  const lines = sseText.split("\n");
-  for (const line of lines) {
-    if (line.startsWith("data: ") && line !== "data: [DONE]") {
-      try {
-        const data = JSON.parse(line.slice(6));
-        content += data.choices?.[0]?.delta?.content || "";
-      } catch { /* skip */ }
-    }
+function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
+  let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace === -1) return null;
+  if (lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
-  return content;
+  cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
+  try { return JSON.parse(cleaned); } catch { return null; }
 }

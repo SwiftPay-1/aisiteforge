@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft } from "lucide-react";
+import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
@@ -199,6 +200,14 @@ export default function GenerateWebsitePage() {
       setProgress(10);
 
       // Extract details from the prompt
+      // Simulate progress steps during non-streaming request
+      const progressInterval = setInterval(() => {
+        setCurrentStep(prev => {
+          if (prev < 4) return prev + 1;
+          return prev;
+        });
+      }, 2500);
+
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
         headers: {
@@ -211,49 +220,27 @@ export default function GenerateWebsitePage() {
           category: "General",
           description: userPrompt,
           theme: "modern",
-          stream: true,
         }),
       });
+
+      clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setCurrentStep(2);
-      setProgress(25);
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No stream reader");
-
-      const decoder = new TextDecoder();
-      let fullContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split("\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ") && line !== "data: [DONE]") {
-            try {
-              const data = JSON.parse(line.slice(6));
-              const delta = data.choices?.[0]?.delta?.content || "";
-              if (delta) {
-                fullContent += delta;
-                if (fullContent.includes('"js"')) { setCurrentStep(4); setProgress(75); }
-                else if (fullContent.includes('"css"')) { setCurrentStep(3); setProgress(55); }
-                else if (fullContent.includes('"html"')) { setCurrentStep(2); setProgress(35); }
-              }
-            } catch { /* skip */ }
-          }
-        }
-      }
-
       setCurrentStep(5);
       setProgress(90);
 
-      const parsed = cleanAndParseAIOutput(fullContent);
+      const result = await response.json();
+      const websiteData = result.generated || result;
+      const parsed: GeneratedWebsite = {
+        html: websiteData.html || "",
+        css: websiteData.css || "",
+        js: websiteData.js || "",
+        sections: websiteData.sections || [],
+      };
       setGenerated(parsed);
       setProgress(100);
 
@@ -690,46 +677,31 @@ export default function GenerateWebsitePage() {
             /* Code view */
             <div className="flex-1 flex flex-col min-h-0">
               <Tabs value={activeCodeTab} onValueChange={setActiveCodeTab} className="flex flex-col flex-1 min-h-0">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
-                  <TabsList className="bg-muted h-8">
-                    <TabsTrigger value="html" className="text-xs h-6 px-3 gap-1">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-[#181825]">
+                  <TabsList className="bg-[#313244] h-8 border-0">
+                    <TabsTrigger value="html" className="text-xs h-6 px-3 gap-1 data-[state=active]:bg-[#1e1e2e] data-[state=active]:text-[#89b4fa] text-[#6c7086]">
                       <FileCode className="h-3 w-3" /> index.html
                     </TabsTrigger>
-                    <TabsTrigger value="css" className="text-xs h-6 px-3 gap-1">
+                    <TabsTrigger value="css" className="text-xs h-6 px-3 gap-1 data-[state=active]:bg-[#1e1e2e] data-[state=active]:text-[#cba6f7] text-[#6c7086]">
                       <Sparkles className="h-3 w-3" /> style.css
                     </TabsTrigger>
-                    <TabsTrigger value="js" className="text-xs h-6 px-3 gap-1">
+                    <TabsTrigger value="js" className="text-xs h-6 px-3 gap-1 data-[state=active]:bg-[#1e1e2e] data-[state=active]:text-[#f9e2af] text-[#6c7086]">
                       <Code className="h-3 w-3" /> script.js
                     </TabsTrigger>
                   </TabsList>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                  <div className="flex items-center gap-1 text-xs text-[#a6adc8]">
+                    <div className="w-2 h-2 rounded-full bg-[#a6e3a1] animate-pulse" />
                     Editable
                   </div>
                 </div>
                 <TabsContent value="html" className="flex-1 m-0 min-h-0">
-                  <Textarea
-                    value={editableHtml}
-                    onChange={(e) => setEditableHtml(e.target.value)}
-                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
-                    spellCheck={false}
-                  />
+                  <CodeEditor value={editableHtml} onChange={setEditableHtml} language="html" />
                 </TabsContent>
                 <TabsContent value="css" className="flex-1 m-0 min-h-0">
-                  <Textarea
-                    value={editableCss}
-                    onChange={(e) => setEditableCss(e.target.value)}
-                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
-                    spellCheck={false}
-                  />
+                  <CodeEditor value={editableCss} onChange={setEditableCss} language="css" />
                 </TabsContent>
                 <TabsContent value="js" className="flex-1 m-0 min-h-0">
-                  <Textarea
-                    value={editableJs}
-                    onChange={(e) => setEditableJs(e.target.value)}
-                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
-                    spellCheck={false}
-                  />
+                  <CodeEditor value={editableJs} onChange={setEditableJs} language="js" />
                 </TabsContent>
               </Tabs>
             </div>
