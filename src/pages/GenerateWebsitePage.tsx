@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle } from "lucide-react";
+import { motion } from "framer-motion";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
@@ -85,8 +85,10 @@ export default function GenerateWebsitePage() {
   const [generated, setGenerated] = useState<GeneratedWebsite | null>(null);
   const [currentStep, setCurrentStep] = useState(-1);
   const [progress, setProgress] = useState(0);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [websiteId, setWebsiteId] = useState<string | null>(null);
 
-  // Progress animation during generation
   useEffect(() => {
     if (!generating) return;
     const interval = setInterval(() => {
@@ -108,6 +110,7 @@ export default function GenerateWebsitePage() {
     setGenerated(null);
     setCurrentStep(0);
     setProgress(0);
+    setWebsiteId(null);
 
     try {
       const { supabase } = await import("@/integrations/supabase/client");
@@ -146,10 +149,8 @@ export default function GenerateWebsitePage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const text = decoder.decode(value, { stream: true });
         const lines = text.split("\n");
-
         for (const line of lines) {
           if (line.startsWith("data: ") && line !== "data: [DONE]") {
             try {
@@ -157,21 +158,11 @@ export default function GenerateWebsitePage() {
               const delta = data.choices?.[0]?.delta?.content || "";
               if (delta) {
                 fullContent += delta;
-                // Update step based on content progress
-                if (fullContent.includes('"js"')) {
-                  setCurrentStep(4);
-                  setProgress(75);
-                } else if (fullContent.includes('"css"')) {
-                  setCurrentStep(3);
-                  setProgress(55);
-                } else if (fullContent.includes('"html"')) {
-                  setCurrentStep(2);
-                  setProgress(35);
-                }
+                if (fullContent.includes('"js"')) { setCurrentStep(4); setProgress(75); }
+                else if (fullContent.includes('"css"')) { setCurrentStep(3); setProgress(55); }
+                else if (fullContent.includes('"html"')) { setCurrentStep(2); setProgress(35); }
               }
-            } catch {
-              // skip
-            }
+            } catch { /* skip */ }
           }
         }
       }
@@ -182,12 +173,74 @@ export default function GenerateWebsitePage() {
       const parsed = cleanAndParseAIOutput(fullContent);
       setGenerated(parsed);
       setProgress(100);
+
+      // Fetch the latest website ID for this user
+      const { data: latestSite } = await supabase
+        .from("websites")
+        .select("id")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (latestSite) setWebsiteId(latestSite.id);
+
       toast.success("Website generated successfully! 🎉");
     } catch (err: any) {
       console.error("Generation error:", err);
       toast.error(err.message || "Failed to generate website");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleEditWithPrompt = async () => {
+    if (!editPrompt.trim() || !generated) return;
+    setEditing(true);
+
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/edit-website`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "apikey": supabaseKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          websiteId,
+          prompt: editPrompt,
+          currentHtml: generated.html,
+          currentCss: generated.css,
+          currentJs: generated.js,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Edit failed`);
+      }
+
+      const result = await response.json();
+      if (result.updated) {
+        setGenerated({
+          html: result.updated.html,
+          css: result.updated.css,
+          js: result.updated.js,
+          sections: generated.sections,
+        });
+        setEditPrompt("");
+        toast.success("Website updated! ✨");
+      }
+    } catch (err: any) {
+      console.error("Edit error:", err);
+      toast.error(err.message || "Failed to edit website");
+    } finally {
+      setEditing(false);
     }
   };
 
@@ -223,7 +276,6 @@ ${html}
     if (!generated) return;
     const zip = new JSZip();
     const slug = businessName.toLowerCase().replace(/\s+/g, "-");
-
     const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -237,11 +289,9 @@ ${generated.html || ""}
 <script src="script.js"><\/script>
 </body>
 </html>`;
-
     zip.file("index.html", indexHtml);
     zip.file("style.css", generated.css || "/* No styles */");
     zip.file("script.js", generated.js || "// No scripts");
-
     const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -257,6 +307,14 @@ ${generated.html || ""}
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
+  };
+
+  const handleStartOver = () => {
+    setGenerated(null);
+    setWebsiteId(null);
+    setEditPrompt("");
+    setCurrentStep(-1);
+    setProgress(0);
   };
 
   return (
@@ -278,57 +336,122 @@ ${generated.html || ""}
 
       <div className="grid lg:grid-cols-5 gap-6 relative">
         {/* Form - 2 cols */}
-        <motion.form
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          onSubmit={handleGenerate}
-          className="lg:col-span-2 space-y-4 p-5 rounded-2xl bg-card border border-border card-shadow h-fit"
+          className="lg:col-span-2 space-y-4 h-fit"
         >
-          <div>
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Business Name</Label>
-            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. TechFlow" className="mt-1" />
-          </div>
-          <div>
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of your business..." rows={3} className="mt-1" />
-          </div>
-          <div>
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Theme Style</Label>
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {themes.map((t) => (
-                <button
-                  type="button"
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={`p-2.5 rounded-lg border text-sm font-medium capitalize transition-all ${
-                    theme === t
-                      ? "border-primary bg-primary/10 text-primary shadow-sm"
-                      : "border-border hover:border-primary/30 text-muted-foreground"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
+          {!generated ? (
+            <form onSubmit={handleGenerate} className="space-y-4 p-5 rounded-2xl bg-card border border-border card-shadow">
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Business Name</Label>
+                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. TechFlow" className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Category</Label>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
+                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of your business..." rows={3} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Theme Style</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {themes.map((t) => (
+                    <button
+                      type="button"
+                      key={t}
+                      onClick={() => setTheme(t)}
+                      className={`p-2.5 rounded-lg border text-sm font-medium capitalize transition-all ${
+                        theme === t
+                          ? "border-primary bg-primary/10 text-primary shadow-sm"
+                          : "border-border hover:border-primary/30 text-muted-foreground"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Button type="submit" className="w-full gradient-bg border-0 text-primary-foreground" disabled={generating}>
+                {generating ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
+                ) : (
+                  <><Wand2 className="h-4 w-4 mr-2" /> Generate Website</>
+                )}
+              </Button>
+            </form>
+          ) : (
+            /* Edit with prompt panel */
+            <div className="space-y-4 p-5 rounded-2xl bg-card border border-border card-shadow">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+                  <Wand2 className="h-4 w-4 text-primary" />
+                  Edit with AI
+                </h3>
+                <Button size="sm" variant="ghost" onClick={handleStartOver} className="text-xs text-muted-foreground">
+                  <RotateCcw className="h-3 w-3 mr-1" /> New Website
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Don't like something? Describe what to change and AI will update it.
+              </p>
+              <Textarea
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                placeholder="e.g. Change the color scheme to blue, add a testimonials section, make the hero text bigger..."
+                rows={4}
+                className="text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleEditWithPrompt();
+                  }
+                }}
+              />
+              <Button
+                onClick={handleEditWithPrompt}
+                className="w-full gradient-bg border-0 text-primary-foreground"
+                disabled={editing || !editPrompt.trim()}
+              >
+                {editing ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Editing...</>
+                ) : (
+                  <><Send className="h-4 w-4 mr-2" /> Apply Changes</>
+                )}
+              </Button>
+
+              <div className="border-t border-border pt-3 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick edits</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "Make it dark mode",
+                    "Add animations",
+                    "Change colors to blue",
+                    "Add testimonials section",
+                    "Make text larger",
+                    "Add a gallery",
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setEditPrompt(suggestion)}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/30 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-          <Button type="submit" className="w-full gradient-bg border-0 text-primary-foreground" disabled={generating}>
-            {generating ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
-            ) : (
-              <><Wand2 className="h-4 w-4 mr-2" /> Generate Website</>
-            )}
-          </Button>
-        </motion.form>
+          )}
+        </motion.div>
 
         {/* Result area - 3 cols */}
         <motion.div
@@ -337,8 +460,7 @@ ${generated.html || ""}
           transition={{ delay: 0.2 }}
           className="lg:col-span-3"
         >
-          {generating ? (
-            /* Progress Steps UI */
+          {generating || editing ? (
             <div className="rounded-2xl border border-border bg-card card-shadow p-6">
               <div className="flex items-center gap-3 mb-6">
                 <div className="relative">
@@ -346,71 +468,78 @@ ${generated.html || ""}
                   <div className="absolute -inset-1 bg-primary/20 rounded-full animate-ping opacity-30" />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold">Generating your website...</h3>
-                  <p className="text-xs text-muted-foreground">AI is building {businessName}</p>
+                  <h3 className="font-display font-semibold">
+                    {editing ? "Applying your changes..." : "Generating your website..."}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {editing ? `Editing: "${editPrompt.slice(0, 50)}${editPrompt.length > 50 ? '...' : ''}"` : `AI is building ${businessName}`}
+                  </p>
                 </div>
               </div>
 
-              <Progress value={progress} className="h-2 mb-6" />
+              {!editing && (
+                <>
+                  <Progress value={progress} className="h-2 mb-6" />
+                  <div className="space-y-3">
+                    {generationSteps.map((step, i) => {
+                      const StepIcon = step.icon;
+                      const isActive = i === currentStep;
+                      const isDone = i < currentStep;
+                      return (
+                        <motion.div
+                          key={step.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                            isActive ? "bg-primary/10 border border-primary/20" : isDone ? "bg-accent/5" : "opacity-40"
+                          }`}
+                        >
+                          {isDone ? (
+                            <CheckCircle2 className="h-5 w-5 text-accent flex-shrink-0" />
+                          ) : isActive ? (
+                            <Loader2 className="h-5 w-5 text-primary animate-spin flex-shrink-0" />
+                          ) : (
+                            <Circle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <span className={`text-sm font-medium ${isActive ? "text-primary" : isDone ? "text-foreground" : "text-muted-foreground"}`}>
+                            {step.label}
+                          </span>
+                          {isDone && <span className="ml-auto text-xs text-accent font-medium">Done</span>}
+                          {isActive && (
+                            <div className="ml-auto flex gap-1">
+                              {[0, 1, 2].map((d) => (
+                                <div key={d} className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
+                              ))}
+                            </div>
+                          )}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
 
-              <div className="space-y-3">
-                {generationSteps.map((step, i) => {
-                  const StepIcon = step.icon;
-                  const isActive = i === currentStep;
-                  const isDone = i < currentStep;
-                  const isPending = i > currentStep;
+              {editing && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="relative mx-auto w-16 h-16 mb-4">
+                      <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+                      <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">AI is editing your website...</p>
+                    <p className="text-xs text-muted-foreground mt-1">This usually takes 10-20 seconds</p>
+                  </div>
+                </div>
+              )}
 
-                  return (
-                    <motion.div
-                      key={step.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                        isActive
-                          ? "bg-primary/10 border border-primary/20"
-                          : isDone
-                          ? "bg-accent/5"
-                          : "opacity-40"
-                      }`}
-                    >
-                      {isDone ? (
-                        <CheckCircle2 className="h-5 w-5 text-accent flex-shrink-0" />
-                      ) : isActive ? (
-                        <Loader2 className="h-5 w-5 text-primary animate-spin flex-shrink-0" />
-                      ) : (
-                        <Circle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                      )}
-                      <span className={`text-sm font-medium ${
-                        isActive ? "text-primary" : isDone ? "text-foreground" : "text-muted-foreground"
-                      }`}>
-                        {step.label}
-                      </span>
-                      {isDone && (
-                        <span className="ml-auto text-xs text-accent font-medium">Done</span>
-                      )}
-                      {isActive && (
-                        <div className="ml-auto flex gap-1">
-                          {[0, 1, 2].map((d) => (
-                            <div
-                              key={d}
-                              className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
-                              style={{ animationDelay: `${d * 0.15}s` }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              <p className="text-xs text-muted-foreground text-center mt-6">
-                This usually takes 15-30 seconds
-              </p>
+              {!editing && (
+                <p className="text-xs text-muted-foreground text-center mt-6">
+                  This usually takes 15-30 seconds
+                </p>
+              )}
             </div>
           ) : generated ? (
-            /* Preview */
             <div className="rounded-2xl border border-border overflow-hidden bg-card card-shadow">
               <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
                 <div className="flex items-center gap-2">
