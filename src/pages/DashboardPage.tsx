@@ -41,11 +41,16 @@ export default function DashboardPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="p-2 rounded-xl gradient-bg">
-            <Zap className="h-5 w-5 text-primary-foreground" />
+          <div className="flex items-center gap-3 mb-1">
+            <div className="p-2 rounded-xl gradient-bg">
+              <Zap className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-2xl md:text-3xl font-bold">Welcome back, {name} 👋</h1>
+              {isPro && <ProBadge />}
+            </div>
           </div>
-          <div>
+          <p className="text-muted-foreground text-sm ml-14">Here's your SiteForge AI overview.</p>
             <h1 className="font-display text-2xl md:text-3xl font-bold">Welcome back, {name} 👋</h1>
             <p className="text-muted-foreground text-sm">Here's your SiteForge AI overview.</p>
           </div>
