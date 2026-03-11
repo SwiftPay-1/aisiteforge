@@ -168,10 +168,7 @@ Include sections: navbar, hero, about, services/skills, projects, contact form, 
 Theme: ${theme}. Make it responsive.
 Keep total output COMPACT - under 3500 tokens.`;
 
-    const userPrompt = `Create a ${theme} website for "${businessName}" (${category}).
-Description: ${description}
-
-Return the JSON now.`;
+    const userPrompt = `Build a ${theme} website for "${businessName}" (${category}). ${description}. Return JSON now.`;
 
     if (stream) {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
