@@ -184,7 +184,7 @@ Keep total output COMPACT - under 3500 tokens.`;
             { role: "user", content: userPrompt },
           ],
           temperature: 0.6,
-          max_tokens: 8000,
+          max_tokens: 16000,
           stream: true,
         }),
       });
