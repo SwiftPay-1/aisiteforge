@@ -41,9 +41,26 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-background relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/[0.03] rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
+        <div className="absolute top-1/2 left-1/2 w-[400px] h-[400px] bg-primary/[0.02] rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+        {/* Grid pattern */}
+        <div className="absolute inset-0 opacity-[0.015]" style={{
+          backgroundImage: "linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)",
+          backgroundSize: "60px 60px"
+        }} />
+        {/* Floating dots */}
+        <div className="absolute top-[20%] left-[15%] w-2 h-2 rounded-full bg-primary/10 animate-float" />
+        <div className="absolute top-[60%] right-[20%] w-3 h-3 rounded-full bg-accent/10 animate-float-delay" />
+        <div className="absolute top-[40%] right-[35%] w-1.5 h-1.5 rounded-full bg-primary/15 animate-float" />
+        <div className="absolute bottom-[25%] left-[40%] w-2.5 h-2.5 rounded-full bg-accent/10 animate-float-delay" />
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 border-r border-border bg-card hidden md:flex flex-col">
+      <aside className="w-64 border-r border-border bg-card/80 backdrop-blur-sm hidden md:flex flex-col relative z-10">
         <Link to="/" className="flex items-center gap-2 p-4 border-b border-border">
           <div className="gradient-bg rounded-lg p-1.5">
             <Zap className="h-4 w-4 text-primary-foreground" />
@@ -86,8 +103,8 @@ export default function DashboardLayout() {
         </div>
       </aside>
       {/* Mobile header */}
-      <div className="flex-1 flex flex-col">
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-border bg-card">
+      <div className="flex-1 flex flex-col relative z-10">
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-border bg-card/80 backdrop-blur-sm">
           <Link to="/" className="flex items-center gap-2">
             <div className="gradient-bg rounded-lg p-1.5">
               <Zap className="h-4 w-4 text-primary-foreground" />
@@ -99,7 +116,7 @@ export default function DashboardLayout() {
           </Button>
         </header>
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border flex justify-around py-2 z-50">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t border-border flex justify-around py-2 z-50">
           {navItems.slice(0, 4).map((item) => (
             <Link
               key={item.path}

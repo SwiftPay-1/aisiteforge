@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { motion } from "framer-motion";
-import { Wand2, Eye, Loader2, Code, Download, ExternalLink, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Wand2, Eye, Loader2, Code, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const themes = ["modern", "minimal", "startup", "dark"];
@@ -20,6 +19,14 @@ interface GeneratedWebsite {
   sections: Array<{ type: string; title: string; content: string }>;
 }
 
+const thinkingSteps = [
+  { icon: Brain, text: "Analyzing your requirements..." },
+  { icon: Cpu, text: "Designing layout structure..." },
+  { icon: FileCode, text: "Writing HTML markup..." },
+  { icon: Sparkles, text: "Crafting CSS styles..." },
+  { icon: Code, text: "Adding JavaScript interactivity..." },
+];
+
 export default function GenerateWebsitePage() {
   const { user } = useAuth();
   const [businessName, setBusinessName] = useState("");
@@ -29,6 +36,26 @@ export default function GenerateWebsitePage() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<GeneratedWebsite | null>(null);
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+  const [streamedContent, setStreamedContent] = useState("");
+  const [thinkingStep, setThinkingStep] = useState(0);
+  const [aiStatus, setAiStatus] = useState("");
+  const codeRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll code view during streaming
+  useEffect(() => {
+    if (codeRef.current && generating) {
+      codeRef.current.scrollTop = codeRef.current.scrollHeight;
+    }
+  }, [streamedContent, generating]);
+
+  // Rotate thinking steps
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(() => {
+      setThinkingStep((prev) => (prev + 1) % thinkingSteps.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [generating]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,23 +65,87 @@ export default function GenerateWebsitePage() {
     }
     setGenerating(true);
     setGenerated(null);
+    setStreamedContent("");
+    setActiveTab("code");
+    setAiStatus("Connecting to AI...");
 
     try {
-      const { data, error } = await supabase.functions.invoke("generate-website", {
-        body: { businessName, category, description, theme },
+      const { supabase } = await import("@/integrations/supabase/client");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      setAiStatus("AI is thinking...");
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "apikey": supabaseKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ businessName, category, description, theme, stream: true }),
       });
 
-      if (error) throw error;
-      if (data?.error) {
-        toast.error(data.error);
-        return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setGenerated(data.generated);
+      setAiStatus("AI is writing code...");
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No stream reader");
+
+      const decoder = new TextDecoder();
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ") && line !== "data: [DONE]") {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const delta = data.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                fullContent += delta;
+                setStreamedContent(fullContent);
+                // Update status based on content
+                if (fullContent.includes('"css"')) setAiStatus("Writing CSS styles...");
+                else if (fullContent.includes('"js"')) setAiStatus("Adding JavaScript...");
+                else if (fullContent.includes('"html"')) setAiStatus("Writing HTML structure...");
+              }
+            } catch {
+              // skip parse errors
+            }
+          }
+        }
+      }
+
+      // Parse the final content
+      let parsed: GeneratedWebsite;
+      try {
+        const jsonMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const jsonStr = jsonMatch ? jsonMatch[1].trim() : fullContent.trim();
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        parsed = { html: fullContent, css: "", js: "", sections: [] };
+      }
+
+      setGenerated(parsed);
+      setActiveTab("preview");
+      setAiStatus("");
       toast.success("Website generated successfully! 🎉");
     } catch (err: any) {
       console.error("Generation error:", err);
       toast.error(err.message || "Failed to generate website");
+      setAiStatus("");
     } finally {
       setGenerating(false);
     }
@@ -72,7 +163,7 @@ export default function GenerateWebsitePage() {
 </head>
 <body>
 ${generated.html}
-<script>${generated.js}</script>
+<script>${generated.js}<\/script>
 </body>
 </html>`;
   };
@@ -96,9 +187,15 @@ ${generated.html}
     window.open(url, "_blank");
   };
 
+  const CurrentThinkingIcon = thinkingSteps[thinkingStep].icon;
+
   return (
-    <div className="max-w-6xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="max-w-6xl mx-auto relative">
+      {/* Decorative background */}
+      <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
         <div className="flex items-center gap-3 mb-1">
           <div className="p-2 rounded-xl gradient-bg">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
@@ -110,7 +207,7 @@ ${generated.html}
         </p>
       </motion.div>
 
-      <div className="grid lg:grid-cols-5 gap-6">
+      <div className="grid lg:grid-cols-5 gap-6 relative">
         {/* Form - 2 cols */}
         <motion.form
           initial={{ opacity: 0, y: 20 }}
@@ -157,16 +254,11 @@ ${generated.html}
           </div>
           <Button type="submit" className="w-full gradient-bg border-0 text-primary-foreground" disabled={generating}>
             {generating ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
             ) : (
               <><Wand2 className="h-4 w-4 mr-2" /> Generate Website</>
             )}
           </Button>
-          {generating && (
-            <p className="text-xs text-center text-muted-foreground animate-pulse">
-              AI is crafting your website... This may take 15-30 seconds.
-            </p>
-          )}
         </motion.form>
 
         {/* Preview - 3 cols */}
@@ -176,8 +268,9 @@ ${generated.html}
           transition={{ delay: 0.2 }}
           className="lg:col-span-3"
         >
-          {generated ? (
+          {generated || generating ? (
             <div className="rounded-2xl border border-border overflow-hidden bg-card card-shadow">
+              {/* Browser chrome */}
               <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1.5">
@@ -185,7 +278,7 @@ ${generated.html}
                     <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
                     <div className="w-3 h-3 rounded-full bg-accent/60" />
                   </div>
-                  <span className="text-xs text-muted-foreground ml-2">{businessName}.html</span>
+                  <span className="text-xs text-muted-foreground ml-2">{businessName || "website"}.html</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -193,6 +286,7 @@ ${generated.html}
                     className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                       activeTab === "preview" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
                     }`}
+                    disabled={generating && !generated}
                   >
                     <Eye className="h-3 w-3 inline mr-1" /> Preview
                   </button>
@@ -207,7 +301,35 @@ ${generated.html}
                 </div>
               </div>
 
-              {activeTab === "preview" ? (
+              {/* AI Status Bar */}
+              <AnimatePresence>
+                {generating && aiStatus && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="bg-primary/5 border-b border-primary/10 px-4 py-2 flex items-center gap-3"
+                  >
+                    <div className="relative">
+                      <CurrentThinkingIcon className="h-4 w-4 text-primary animate-pulse" />
+                      <div className="absolute -inset-1 bg-primary/20 rounded-full animate-ping" />
+                    </div>
+                    <span className="text-xs font-medium text-primary">{aiStatus}</span>
+                    <div className="flex-1" />
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
+                          style={{ animationDelay: `${i * 0.15}s` }}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {activeTab === "preview" && generated ? (
                 <div className="relative">
                   <iframe
                     srcDoc={getFullHTML()}
@@ -217,38 +339,37 @@ ${generated.html}
                   />
                 </div>
               ) : (
-                <div className="max-h-[500px] overflow-auto p-4">
-                  <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-all">
-                    {getFullHTML()}
+                <div className="max-h-[500px] overflow-auto p-4 bg-muted/30" ref={codeRef as any}>
+                  <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap break-all leading-relaxed">
+                    {generating ? (
+                      <>
+                        {streamedContent}
+                        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-0.5" />
+                      </>
+                    ) : generated ? (
+                      getFullHTML()
+                    ) : null}
                   </pre>
                 </div>
               )}
 
-              <div className="flex gap-2 p-3 border-t border-border bg-muted/50">
-                <Button size="sm" variant="outline" onClick={handleDownload}>
-                  <Download className="h-3 w-3 mr-1" /> Download
-                </Button>
-                <Button size="sm" variant="outline" onClick={handlePreviewInNewTab}>
-                  <ExternalLink className="h-3 w-3 mr-1" /> Full Preview
-                </Button>
-              </div>
+              {generated && (
+                <div className="flex gap-2 p-3 border-t border-border bg-muted/50">
+                  <Button size="sm" variant="outline" onClick={handleDownload}>
+                    <Download className="h-3 w-3 mr-1" /> Download
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handlePreviewInNewTab}>
+                    <ExternalLink className="h-3 w-3 mr-1" /> Full Preview
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="h-full min-h-[400px] rounded-2xl border-2 border-dashed border-border flex items-center justify-center">
+            <div className="h-full min-h-[400px] rounded-2xl border-2 border-dashed border-border flex items-center justify-center bg-card/50">
               <div className="text-center text-muted-foreground px-6">
-                {generating ? (
-                  <>
-                    <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
-                    <p className="font-display font-semibold text-lg mb-1">Building your website...</p>
-                    <p className="text-sm">AI is writing HTML, CSS, and JavaScript for you</p>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">Your website preview will appear here</p>
-                    <p className="text-sm">Fill the form and click generate</p>
-                  </>
-                )}
+                <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Your website preview will appear here</p>
+                <p className="text-sm">Fill the form and click generate</p>
               </div>
             </div>
           )}

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Globe, Eye, Trash2, Plus, Download, Code, ExternalLink } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Globe, Eye, Trash2, Plus, Download, Code, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Website {
   id: string;
@@ -24,6 +26,11 @@ export default function MyWebsitesPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewSite, setPreviewSite] = useState<Website | null>(null);
+  const [editSite, setEditSite] = useState<Website | null>(null);
+  const [editHtml, setEditHtml] = useState("");
+  const [editCss, setEditCss] = useState("");
+  const [editJs, setEditJs] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -50,11 +57,34 @@ export default function MyWebsitesPage() {
   };
 
   const getFullHTML = (site: Website) => {
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${site.name}</title><style>${site.css_content || ""}</style></head><body>${site.html_content || ""}<script>${site.js_content || ""}</script></body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${site.name}</title><style>${site.css_content || ""}</style></head><body>${site.html_content || ""}<script>${site.js_content || ""}<\/script></body></html>`;
   };
 
-  const handleDownload = (site: Website) => {
-    const blob = new Blob([getFullHTML(site)], { type: "text/html" });
+  const getEditPreviewHTML = () => {
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Preview</title><style>${editCss}</style></head><body>${editHtml}<script>${editJs}<\/script></body></html>`;
+  };
+
+  const handleDownloadZip = async (site: Website) => {
+    // Create individual files and zip them using JSZip-like approach with Blob
+    const htmlFile = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${site.name}</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+${site.html_content || ""}
+<script src="script.js"><\/script>
+</body>
+</html>`;
+    const cssFile = site.css_content || "/* No styles */";
+    const jsFile = site.js_content || "// No scripts";
+
+    // Simple single-file download (HTML with inline CSS/JS)
+    const fullHtml = getFullHTML(site);
+    const blob = new Blob([fullHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -64,8 +94,43 @@ export default function MyWebsitesPage() {
     toast.success("Downloaded!");
   };
 
+  const openEditor = (site: Website) => {
+    setEditSite(site);
+    setEditHtml(site.html_content || "");
+    setEditCss(site.css_content || "");
+    setEditJs(site.js_content || "");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editSite) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("websites")
+      .update({
+        html_content: editHtml,
+        css_content: editCss,
+        js_content: editJs,
+      })
+      .eq("id", editSite.id);
+    setSaving(false);
+    if (error) {
+      toast.error("Failed to save");
+      return;
+    }
+    setWebsites((prev) =>
+      prev.map((w) =>
+        w.id === editSite.id ? { ...w, html_content: editHtml, css_content: editCss, js_content: editJs } : w
+      )
+    );
+    toast.success("Website updated!");
+    setEditSite(null);
+  };
+
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto relative">
+      {/* Decorative background */}
+      <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-display text-3xl font-bold mb-1">My Websites</h1>
@@ -121,11 +186,14 @@ export default function MyWebsitesPage() {
                 <p className="text-xs text-muted-foreground mb-3">
                   {new Date(site.created_at).toLocaleDateString()}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => setPreviewSite(site)}>
                     <Eye className="h-3 w-3 mr-1" /> View
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleDownload(site)}>
+                  <Button size="sm" variant="outline" onClick={() => openEditor(site)}>
+                    <Code className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleDownloadZip(site)}>
                     <Download className="h-3 w-3" />
                   </Button>
                   <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDelete(site.id)}>
@@ -138,6 +206,7 @@ export default function MyWebsitesPage() {
         </div>
       )}
 
+      {/* Preview Dialog */}
       <Dialog open={!!previewSite} onOpenChange={() => setPreviewSite(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh]">
           <DialogHeader>
@@ -153,6 +222,86 @@ export default function MyWebsitesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Code Editor Dialog */}
+      <Dialog open={!!editSite} onOpenChange={() => setEditSite(null)}>
+        <DialogContent className="max-w-6xl max-h-[95vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Code className="h-5 w-5 text-primary" />
+              Edit: {editSite?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid lg:grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
+            {/* Code Editor */}
+            <div className="flex flex-col min-h-0">
+              <Tabs defaultValue="html" className="flex flex-col flex-1 min-h-0">
+                <TabsList className="bg-muted w-fit">
+                  <TabsTrigger value="html">HTML</TabsTrigger>
+                  <TabsTrigger value="css">CSS</TabsTrigger>
+                  <TabsTrigger value="js">JS</TabsTrigger>
+                </TabsList>
+                <TabsContent value="html" className="flex-1 min-h-0 mt-2">
+                  <Textarea
+                    value={editHtml}
+                    onChange={(e) => setEditHtml(e.target.value)}
+                    className="font-mono text-xs h-full min-h-[400px] resize-none"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+                <TabsContent value="css" className="flex-1 min-h-0 mt-2">
+                  <Textarea
+                    value={editCss}
+                    onChange={(e) => setEditCss(e.target.value)}
+                    className="font-mono text-xs h-full min-h-[400px] resize-none"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+                <TabsContent value="js" className="flex-1 min-h-0 mt-2">
+                  <Textarea
+                    value={editJs}
+                    onChange={(e) => setEditJs(e.target.value)}
+                    className="font-mono text-xs h-full min-h-[400px] resize-none"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
+            {/* Live Preview */}
+            <div className="rounded-xl border border-border overflow-hidden bg-white min-h-[400px]">
+              <div className="px-3 py-2 bg-muted border-b border-border flex items-center gap-2">
+                <div className="flex gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-destructive/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-accent/60" />
+                </div>
+                <span className="text-xs text-muted-foreground">Live Preview</span>
+              </div>
+              <iframe
+                srcDoc={getEditPreviewHTML()}
+                className="w-full h-[440px]"
+                sandbox="allow-scripts"
+                title="Live Preview"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setEditSite(null)}>Cancel</Button>
+            <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleSaveEdit} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function Loader2(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
   );
 }
