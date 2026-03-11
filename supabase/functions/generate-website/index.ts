@@ -60,9 +60,9 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert website builder AI. Generate a complete, modern, responsive single-page website.
     
-Output format: Return ONLY a JSON object with these fields:
-- html: Complete HTML content (use semantic HTML5, include all sections inline)
-- css: Complete CSS styles (modern, responsive, use CSS variables, animations, gradients)
+Output format: Return ONLY a valid JSON object (no markdown, no backticks) with these fields:
+- html: ONLY the inner body content (do NOT include <!DOCTYPE>, <html>, <head>, or <body> tags - just the content that goes inside <body>)
+- css: Complete CSS styles (modern, responsive, use CSS variables, animations, gradients). Include any @import for fonts at the top.
 - js: JavaScript for interactivity (smooth scroll, animations, mobile menu toggle)
 - sections: Array of {type, title, content} for preview
 
@@ -74,7 +74,8 @@ Requirements:
 - Make it production-ready and visually stunning
 - Include: hero, about, services/features, testimonials, contact, footer sections
 - Use placeholder images from https://placehold.co/
-- Include a navigation bar with smooth scroll links`;
+- Include a navigation bar with smooth scroll links
+- IMPORTANT: Return raw JSON only, no markdown code blocks`;
 
     const userPrompt = `Create a ${theme} themed website for "${businessName}" - a ${category} business.
 Description: ${description}
