@@ -144,3 +144,86 @@
   0%, 100% { box-shadow: 0 0 20px hsl(250 85% 60% / 0.2); }
   50% { box-shadow: 0 0 40px hsl(250 85% 60% / 0.4); }
 }
+
+/* Code Editor */
+.code-editor-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1e1e2e;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.code-editor-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  padding: 16px 8px 16px 0;
+  text-align: right;
+  color: #585b70;
+  background: #181825;
+  border-right: 1px solid #313244;
+  overflow: hidden;
+  z-index: 2;
+  user-select: none;
+  pointer-events: none;
+}
+
+.code-editor-line-num {
+  height: calc(13px * 1.6);
+  font-size: 11px;
+  line-height: calc(13px * 1.6);
+}
+
+.code-editor-highlight,
+.code-editor-textarea {
+  position: absolute;
+  top: 0;
+  left: 48px;
+  right: 0;
+  bottom: 0;
+  padding: 16px 16px 16px 12px;
+  margin: 0;
+  border: none;
+  outline: none;
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+  font: inherit;
+  line-height: inherit;
+  tab-size: 2;
+}
+
+.code-editor-highlight {
+  z-index: 1;
+  color: #cdd6f4;
+  pointer-events: none;
+}
+
+.code-editor-textarea {
+  z-index: 3;
+  color: transparent;
+  caret-color: #f5e0dc;
+  background: transparent;
+  resize: none;
+  -webkit-text-fill-color: transparent;
+}
+
+.code-editor-textarea::selection {
+  background: hsl(250 85% 60% / 0.3);
+  -webkit-text-fill-color: #cdd6f4;
+}
+
+/* Catppuccin Mocha token colors */
+.tok-keyword { color: #cba6f7; }
+.tok-string { color: #a6e3a1; }
+.tok-number { color: #fab387; }
+.tok-comment { color: #6c7086; font-style: italic; }
+.tok-tag { color: #89b4fa; }
+.tok-attr { color: #f9e2af; }
+.tok-builtin { color: #89dceb; }
