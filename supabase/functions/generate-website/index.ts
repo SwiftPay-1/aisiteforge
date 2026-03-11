@@ -110,21 +110,21 @@ Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, t
         type: "function",
         function: {
           name: "create_website",
-          description: "Create a complete website with HTML, CSS, and JavaScript",
+          description: "Create a complete, production-ready website with all 8 sections",
           parameters: {
             type: "object",
             properties: {
               html: {
                 type: "string",
-                description: "Complete inner body HTML (no DOCTYPE/html/head/body wrapper tags). Must include all sections."
+                description: "Complete inner body HTML with ALL 8 sections (nav, hero, about, services, portfolio, testimonials, contact, footer). No DOCTYPE/html/head/body wrapper tags. Must be extensive and production-ready."
               },
               css: {
                 type: "string",
-                description: "Complete CSS including @import for fonts and icon libraries. Include all styles."
+                description: "Complete CSS with @import for Google Fonts and Font Awesome 6. Include CSS custom properties, responsive breakpoints (1200px, 992px, 768px, 576px), hover effects, transitions, animations, box-shadows, gradients. Must be 300+ lines."
               },
               js: {
                 type: "string",
-                description: "Complete JavaScript for interactivity: smooth scroll, mobile menu toggle, animations."
+                description: "Complete JavaScript: smooth scroll, mobile hamburger menu, IntersectionObserver animations, sticky navbar scroll effect, form validation, back-to-top button."
               },
               sections: {
                 type: "array",
