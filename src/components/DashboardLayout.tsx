@@ -3,6 +3,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Zap, LayoutDashboard, Globe, User, CreditCard, LogOut, Wand2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -16,15 +18,27 @@ export default function DashboardLayout() {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const checkAdmin = async () => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .single();
+      setIsAdmin(!!data);
+    };
+    checkAdmin();
+  }, [user]);
 
   const handleLogout = async () => {
     await signOut();
     toast.success("Logged out");
     navigate("/");
   };
-
-  // Check if admin (simple check via email for demo - in production use roles table)
-  const isAdmin = user?.email === "admin@siteforge.ai";
 
   return (
     <div className="min-h-screen flex bg-background">

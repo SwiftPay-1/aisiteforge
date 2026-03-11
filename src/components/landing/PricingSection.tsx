@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 
@@ -7,18 +7,32 @@ const plans = [
   {
     name: "Free",
     price: "0",
-    description: "Perfect to get started",
-    features: ["1 website", "Basic templates", "AI generation", "Community support"],
+    description: "Get started for free",
+    features: [
+      { text: "3 AI generations/day", included: true },
+      { text: "Basic templates", included: true },
+      { text: "Download HTML files", included: true },
+      { text: "Unlimited websites", included: false },
+      { text: "Advanced themes", included: false },
+      { text: "Priority support", included: false },
+    ],
     cta: "Start Free",
     popular: false,
   },
   {
-    name: "Premium",
+    name: "Pro",
     price: "499",
     currency: "৳",
     description: "For serious builders",
-    features: ["Unlimited websites", "Advanced themes", "AI editing", "Custom domain support", "Priority support", "Analytics"],
-    cta: "Go Premium",
+    features: [
+      { text: "Unlimited AI generations", included: true },
+      { text: "All templates & themes", included: true },
+      { text: "Download HTML files", included: true },
+      { text: "Unlimited websites", included: true },
+      { text: "Advanced themes", included: true },
+      { text: "Priority support", included: true },
+    ],
+    cta: "Upgrade to Pro",
     popular: true,
   },
 ];
@@ -36,7 +50,7 @@ export default function PricingSection() {
           <h2 className="text-3xl md:text-5xl font-display font-bold mb-4">
             Simple, <span className="gradient-text">Transparent</span> Pricing
           </h2>
-          <p className="text-muted-foreground text-lg">No hidden fees. Upgrade anytime.</p>
+          <p className="text-muted-foreground text-lg">Start free, upgrade when you need more.</p>
         </motion.div>
         <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
           {plans.map((plan, i) => (
@@ -65,9 +79,13 @@ export default function PricingSection() {
               </div>
               <ul className="space-y-3 mb-8">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm">
-                    <Check className="h-4 w-4 text-accent" />
-                    {f}
+                  <li key={f.text} className={`flex items-center gap-2 text-sm ${!f.included ? "text-muted-foreground/50" : ""}`}>
+                    {f.included ? (
+                      <Check className="h-4 w-4 text-accent" />
+                    ) : (
+                      <X className="h-4 w-4 text-muted-foreground/30" />
+                    )}
+                    {f.text}
                   </li>
                 ))}
               </ul>
