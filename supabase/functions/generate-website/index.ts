@@ -155,15 +155,15 @@ Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, t
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "openai/gpt-5",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         tools,
         tool_choice: { type: "function", function: { name: "create_website" } },
-        temperature: 0.7,
-        max_tokens: 64000,
+        temperature: 0.8,
+        max_tokens: 100000,
       }),
     });
 
