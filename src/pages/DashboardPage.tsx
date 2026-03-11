@@ -33,8 +33,10 @@ export default function DashboardPage() {
   const stats = [
     { label: "Websites Created", value: String(websiteCount), icon: Globe, color: "text-primary" },
     { label: "Today's Generations", value: `${todayUsage}/${dailyLimit}`, icon: Wand2, color: "text-accent" },
-    { label: "Current Plan", value: plan, icon: CreditCard, color: "text-primary" },
+    { label: "Current Plan", value: plan, icon: plan === "Pro" ? Crown : CreditCard, color: plan === "Pro" ? "text-accent" : "text-primary" },
   ];
+
+  const isPro = plan === "Pro";
 
   return (
     <div className="max-w-5xl mx-auto">
