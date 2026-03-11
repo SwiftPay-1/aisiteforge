@@ -95,62 +95,39 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an elite, world-class website developer and designer. You produce pixel-perfect, visually stunning, production-ready websites that look like they were built by a top design agency.
+    const systemPrompt = `You are an elite website developer. Return ONLY raw JSON with keys: html, css, js, sections. NO markdown, NO backticks.
 
-OUTPUT FORMAT: Return ONLY raw JSON with keys: html, css, js, sections. NO markdown, NO backticks, NO explanation.
-
-DESIGN EXCELLENCE RULES:
+CRITICAL RULES:
 1. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
-2. Use modern, semantic HTML5 (header, nav, main, section, article, footer).
-3. Include Font Awesome 6 CDN via @import in CSS: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css
-4. Use https://placehold.co/ for placeholder images with proper dimensions.
-5. Every element must have thoughtful spacing, typography, and visual hierarchy.
+2. Keep HTML CONCISE - use short class names, avoid excessive nesting.
+3. Use https://placehold.co/ for images. Use Font Awesome 6 icons.
+4. "css" = complete CSS with @import for Google Fonts and Font Awesome CDN.
+5. "js" = complete JavaScript for interactivity.
+6. "sections" = [{type, title, content}] array.
 
-CSS MASTERY:
-- Use CSS custom properties (variables) for colors, fonts, spacing.
-- Include a Google Font import (@import) that matches the theme.
-- Use gradients, box-shadows, backdrop-filter for depth.
-- Smooth transitions on all interactive elements (0.3s ease).
-- Mobile-first responsive design with clean breakpoints.
-- Use grid and flexbox for layouts.
-- Add subtle hover effects on cards, buttons, links.
-- Keep CSS well-organized: variables → resets → typography → layout → components → responsive.
+IMPORTANT - COMPLETENESS OVER DETAIL:
+- It is CRITICAL that ALL HTML tags are properly opened AND closed.
+- Keep each section focused and concise rather than overly detailed.
+- Use 4-5 sections max: Nav, Hero, Features/About, Contact, Footer.
+- Each menu/list should have 3-4 items max, not 8+.
+- Prefer CSS classes over inline styles.
 
-JAVASCRIPT FEATURES:
-- Smooth scroll navigation.
-- Mobile hamburger menu toggle.
-- Scroll-triggered fade-in animations using IntersectionObserver.
-- Sticky header with background change on scroll.
-- Form validation with visual feedback.
-- Dark/light mode toggle if theme is "dark".
+CSS REQUIREMENTS:
+- CSS custom properties for colors/fonts.
+- Google Font @import. Font Awesome @import: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css
+- Responsive design with flexbox/grid. Smooth transitions.
+- Professional color palette with good contrast.
 
-REQUIRED SECTIONS (in order):
-1. Navigation bar - sticky, responsive, with logo and CTA button
-2. Hero section - large heading, subtitle, dual CTAs, background visual
-3. About/Features section - icon cards in grid
-4. Services/Skills section - detailed cards with icons
-5. Projects/Portfolio - image cards with hover overlay
-6. Testimonials - carousel or grid with avatars
-7. Contact form - styled inputs with validation
-8. Footer - multi-column with links, social icons, copyright
+JS REQUIREMENTS:
+- Smooth scroll, mobile menu toggle, scroll animations via IntersectionObserver.
+- Form validation if contact form exists.
 
-QUALITY STANDARDS:
-- Professional color palette with proper contrast ratios.
-- Consistent spacing system (8px grid).
-- Typography hierarchy: distinct h1-h6 sizes.
-- All images have alt text.
-- Interactive elements have focus states.
-- Animations are smooth and not excessive.
-
-"sections" = [{type, title, content}] array describing each section.
 Theme: ${theme}. Category: ${category}.
-Produce COMPLETE, POLISHED output. This should look like a real production website.`;
+Produce COMPLETE, valid JSON. Every tag must be closed. Quality over quantity.`;
 
-    const userPrompt = `Build a stunning ${theme} website for "${businessName}" (${category} industry).
-
+    const userPrompt = `Build a professional ${theme} website for "${businessName}" (${category}).
 Description: ${description}
-
-Make it look absolutely professional and modern. Every detail matters - typography, colors, spacing, animations. This should impress anyone who sees it. Return the complete JSON now.`;
+Keep it concise but polished. 4-5 sections. Return complete valid JSON.`;
 
     if (stream) {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -160,7 +137,7 @@ Make it look absolutely professional and modern. Every detail matters - typograp
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -255,7 +232,7 @@ Make it look absolutely professional and modern. Every detail matters - typograp
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
