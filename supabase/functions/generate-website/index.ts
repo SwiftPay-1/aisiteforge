@@ -22,7 +22,6 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    // Check daily usage
     const today = new Date().toISOString().split("T")[0];
     
     const adminClient = createClient(
@@ -54,7 +53,7 @@ serve(async (req) => {
       }
     }
 
-    const { businessName, category, description, theme } = await req.json();
+    const { businessName, category, description, theme, stream } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
@@ -82,6 +81,114 @@ Description: ${description}
 
 Generate the complete HTML, CSS, and JS code. Make it visually impressive with the ${theme} style.`;
 
+    // Streaming mode
+    if (stream) {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.7,
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AI gateway error:", response.status, errorText);
+        return new Response(JSON.stringify({ error: "AI generation failed" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Create a TransformStream that forwards SSE chunks and saves the full content
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+
+      const transformStream = new TransformStream({
+        async transform(chunk, controller) {
+          const text = decoder.decode(chunk);
+          fullContent += extractContent(text);
+          controller.enqueue(chunk);
+        },
+        async flush(controller) {
+          // After stream ends, save to DB
+          try {
+            let parsed;
+            try {
+              const jsonMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+              const jsonStr = jsonMatch ? jsonMatch[1].trim() : fullContent.trim();
+              parsed = JSON.parse(jsonStr);
+            } catch {
+              parsed = {
+                html: fullContent,
+                css: "",
+                js: "",
+                sections: [
+                  { type: "hero", title: businessName, content: description },
+                ],
+              };
+            }
+
+            await adminClient
+              .from("websites")
+              .insert({
+                user_id: user.id,
+                name: businessName,
+                category,
+                description,
+                theme,
+                html_content: parsed.html || "",
+                css_content: parsed.css || "",
+                js_content: parsed.js || "",
+                preview_data: parsed.sections || [],
+              });
+
+            // Update daily usage
+            const { data: existingUsage } = await adminClient
+              .from("daily_usage")
+              .select("id, generation_count")
+              .eq("user_id", user.id)
+              .eq("usage_date", today)
+              .single();
+
+            if (existingUsage) {
+              await adminClient
+                .from("daily_usage")
+                .update({ generation_count: existingUsage.generation_count + 1 })
+                .eq("id", existingUsage.id);
+            } else {
+              await adminClient
+                .from("daily_usage")
+                .insert({ user_id: user.id, usage_date: today, generation_count: 1 });
+            }
+          } catch (e) {
+            console.error("DB save error after stream:", e);
+          }
+        }
+      });
+
+      const readableStream = response.body!.pipeThrough(transformStream);
+
+      return new Response(readableStream, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    }
+
+    // Non-streaming mode (fallback)
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -117,14 +224,12 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
     const aiData = await response.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
-    // Parse JSON from the response (handle markdown code blocks)
     let parsed;
     try {
       const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
       const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawContent.trim();
       parsed = JSON.parse(jsonStr);
     } catch {
-      // If parsing fails, treat the whole response as HTML
       parsed = {
         html: rawContent,
         css: "",
@@ -132,13 +237,10 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
         sections: [
           { type: "hero", title: businessName, content: description },
           { type: "about", title: "About Us", content: `${businessName} is a leading ${category} company.` },
-          { type: "services", title: "Our Services", content: "Professional services tailored to your needs." },
-          { type: "contact", title: "Contact", content: "Get in touch with us today." },
         ],
       };
     }
 
-    // Save to database
     const { data: website, error: dbError } = await adminClient
       .from("websites")
       .insert({
@@ -191,3 +293,19 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
     );
   }
 });
+
+function extractContent(sseText: string): string {
+  let content = "";
+  const lines = sseText.split("\n");
+  for (const line of lines) {
+    if (line.startsWith("data: ") && line !== "data: [DONE]") {
+      try {
+        const data = JSON.parse(line.slice(6));
+        content += data.choices?.[0]?.delta?.content || "";
+      } catch {
+        // skip
+      }
+    }
+  }
+  return content;
+}

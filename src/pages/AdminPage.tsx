@@ -3,10 +3,12 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Globe, CreditCard, BarChart3, Check, X, Search, Shield, Trash2, Crown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Globe, CreditCard, BarChart3, Check, X, Search, Shield, Crown, Edit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -16,6 +18,8 @@ export default function AdminPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [newPlan, setNewPlan] = useState("");
 
   useEffect(() => {
     checkAdminAndFetch();
@@ -23,7 +27,6 @@ export default function AdminPage() {
 
   const checkAdminAndFetch = async () => {
     if (!user) return;
-    
     const { data: roleData } = await supabase
       .from("user_roles")
       .select("role")
@@ -51,30 +54,28 @@ export default function AdminPage() {
   };
 
   const handlePaymentAction = async (paymentId: string, action: "approved" | "rejected") => {
-    const { error } = await supabase
-      .from("payments")
-      .update({ status: action })
-      .eq("id", paymentId);
-
-    if (error) {
-      toast.error("Failed to update payment");
-      return;
-    }
+    const { error } = await supabase.from("payments").update({ status: action }).eq("id", paymentId);
+    if (error) { toast.error("Failed to update payment"); return; }
 
     if (action === "approved") {
       const payment = payments.find((p) => p.id === paymentId);
       if (payment) {
-        await supabase
-          .from("profiles")
-          .update({ plan: "pro" })
-          .eq("user_id", payment.user_id);
+        await supabase.from("profiles").update({ plan: "pro" }).eq("user_id", payment.user_id);
+        setProfiles((prev) => prev.map((p) => p.user_id === payment.user_id ? { ...p, plan: "pro" } : p));
       }
     }
 
-    setPayments((prev) =>
-      prev.map((p) => (p.id === paymentId ? { ...p, status: action } : p))
-    );
+    setPayments((prev) => prev.map((p) => (p.id === paymentId ? { ...p, status: action } : p)));
     toast.success(`Payment ${action}`);
+  };
+
+  const handleUpdatePlan = async () => {
+    if (!editingUser || !newPlan) return;
+    const { error } = await supabase.from("profiles").update({ plan: newPlan }).eq("user_id", editingUser.user_id);
+    if (error) { toast.error("Failed to update plan"); return; }
+    setProfiles((prev) => prev.map((p) => p.user_id === editingUser.user_id ? { ...p, plan: newPlan } : p));
+    toast.success(`Plan updated to ${newPlan}`);
+    setEditingUser(null);
   };
 
   if (loading) {
@@ -108,8 +109,11 @@ export default function AdminPage() {
     );
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="max-w-6xl mx-auto relative">
+      <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
         <div className="flex items-center gap-2 mb-1">
           <Shield className="h-6 w-6 text-primary" />
           <h1 className="font-display text-3xl font-bold">Admin Panel</h1>
@@ -153,6 +157,7 @@ export default function AdminPage() {
                   <th className="p-3 text-left font-medium">Name</th>
                   <th className="p-3 text-left font-medium">Plan</th>
                   <th className="p-3 text-left font-medium">Joined</th>
+                  <th className="p-3 text-left font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -165,6 +170,15 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td className="p-3 text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td className="p-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { setEditingUser(u); setNewPlan(u.plan || "free"); }}
+                      >
+                        <Edit className="h-3 w-3 mr-1" /> Edit Plan
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -241,6 +255,35 @@ export default function AdminPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Plan Dialog */}
+      <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">Edit Subscription Plan</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">User: <strong>{editingUser?.full_name || "—"}</strong></p>
+              <p className="text-sm text-muted-foreground">Current: <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${editingUser?.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted"}`}>{editingUser?.plan || "free"}</span></p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Plan</label>
+              <Select value={newPlan} onValueChange={setNewPlan}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="pro">Pro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
+              <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleUpdatePlan}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
