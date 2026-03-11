@@ -24,6 +24,7 @@ interface Website {
 
 export default function MyWebsitesPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [websites, setWebsites] = useState<Website[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewSite, setPreviewSite] = useState<Website | null>(null);
