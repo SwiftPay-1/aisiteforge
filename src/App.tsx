@@ -17,6 +17,7 @@ import MyWebsitesPage from "./pages/MyWebsitesPage";
 import ProfilePage from "./pages/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
 import AdminPage from "./pages/AdminPage";
+import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
