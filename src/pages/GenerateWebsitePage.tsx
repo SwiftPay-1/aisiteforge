@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Code, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode } from "lucide-react";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Progress } from "@/components/ui/progress";
+import JSZip from "jszip";
 
 const themes = ["modern", "minimal", "startup", "dark"];
 const categories = ["Technology", "Restaurant", "E-commerce", "Portfolio", "Agency", "Healthcare", "Education", "Real Estate"];
@@ -19,61 +21,35 @@ interface GeneratedWebsite {
   sections: Array<{ type: string; title: string; content: string }>;
 }
 
-const thinkingSteps = [
-  { icon: Brain, text: "Analyzing your requirements..." },
-  { icon: Cpu, text: "Designing layout structure..." },
-  { icon: FileCode, text: "Writing HTML markup..." },
-  { icon: Sparkles, text: "Crafting CSS styles..." },
-  { icon: Code, text: "Adding JavaScript interactivity..." },
+const generationSteps = [
+  { id: "connect", label: "Connecting to AI", icon: Brain },
+  { id: "analyze", label: "Analyzing requirements", icon: Cpu },
+  { id: "html", label: "Writing HTML structure", icon: FileCode },
+  { id: "css", label: "Crafting CSS styles", icon: Sparkles },
+  { id: "js", label: "Adding JavaScript", icon: Code },
+  { id: "save", label: "Saving website", icon: CheckCircle2 },
 ];
 
-/** Robust JSON parser that handles markdown fences, truncation, and malformed output */
 function cleanAndParseAIOutput(raw: string): GeneratedWebsite {
-  // Strip markdown fences
-  let cleaned = raw
-    .replace(/^```(?:json)?\s*/gim, "")
-    .replace(/```\s*$/gim, "")
-    .trim();
-
-  // Find outermost JSON object
+  let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
-
-  if (firstBrace === -1) {
-    return { html: raw, css: "", js: "", sections: [] };
-  }
-
+  if (firstBrace === -1) return { html: raw, css: "", js: "", sections: [] };
   if (lastBrace > firstBrace) {
     cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   } else {
     cleaned = cleaned.substring(firstBrace);
     cleaned = repairTruncatedJSON(cleaned);
   }
-
-  // Remove control characters
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
-  // Fix trailing commas
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-
   try {
     const obj = JSON.parse(cleaned);
-    return {
-      html: obj.html || "",
-      css: obj.css || "",
-      js: obj.js || "",
-      sections: obj.sections || [],
-    };
+    return { html: obj.html || "", css: obj.css || "", js: obj.js || "", sections: obj.sections || [] };
   } catch {
-    // Try repair
     try {
-      const repaired = repairTruncatedJSON(cleaned);
-      const obj = JSON.parse(repaired);
-      return {
-        html: obj.html || "",
-        css: obj.css || "",
-        js: obj.js || "",
-        sections: obj.sections || [],
-      };
+      const obj = JSON.parse(repairTruncatedJSON(cleaned));
+      return { html: obj.html || "", css: obj.css || "", js: obj.js || "", sections: obj.sections || [] };
     } catch {
       return { html: raw, css: "", js: "", sections: [] };
     }
@@ -82,10 +58,8 @@ function cleanAndParseAIOutput(raw: string): GeneratedWebsite {
 
 function repairTruncatedJSON(json: string): string {
   let result = json.replace(/,\s*$/, "");
-  let inString = false;
-  let escape = false;
+  let inString = false, escape = false;
   const stack: string[] = [];
-
   for (let i = 0; i < result.length; i++) {
     const ch = result[i];
     if (escape) { escape = false; continue; }
@@ -96,7 +70,6 @@ function repairTruncatedJSON(json: string): string {
     else if (ch === "[") stack.push("]");
     else if (ch === "}" || ch === "]") stack.pop();
   }
-
   if (inString) result += '"';
   while (stack.length > 0) result += stack.pop();
   return result;
@@ -110,25 +83,18 @@ export default function GenerateWebsitePage() {
   const [theme, setTheme] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<GeneratedWebsite | null>(null);
-  const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
-  const [streamedContent, setStreamedContent] = useState("");
-  const [thinkingStep, setThinkingStep] = useState(0);
-  const [aiStatus, setAiStatus] = useState("");
-  const codeRef = useRef<HTMLPreElement>(null);
+  const [currentStep, setCurrentStep] = useState(-1);
+  const [progress, setProgress] = useState(0);
 
-  // Auto-scroll code view during streaming
-  useEffect(() => {
-    if (codeRef.current && generating) {
-      codeRef.current.scrollTop = codeRef.current.scrollHeight;
-    }
-  }, [streamedContent, generating]);
-
-  // Rotate thinking steps
+  // Progress animation during generation
   useEffect(() => {
     if (!generating) return;
     const interval = setInterval(() => {
-      setThinkingStep((prev) => (prev + 1) % thinkingSteps.length);
-    }, 3000);
+      setProgress((prev) => {
+        if (prev >= 95) return prev;
+        return prev + Math.random() * 3 + 0.5;
+      });
+    }, 500);
     return () => clearInterval(interval);
   }, [generating]);
 
@@ -140,9 +106,8 @@ export default function GenerateWebsitePage() {
     }
     setGenerating(true);
     setGenerated(null);
-    setStreamedContent("");
-    setActiveTab("code");
-    setAiStatus("Connecting to AI...");
+    setCurrentStep(0);
+    setProgress(0);
 
     try {
       const { supabase } = await import("@/integrations/supabase/client");
@@ -151,7 +116,8 @@ export default function GenerateWebsitePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      setAiStatus("AI is thinking...");
+      setCurrentStep(1);
+      setProgress(10);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
@@ -168,7 +134,8 @@ export default function GenerateWebsitePage() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setAiStatus("AI is writing code...");
+      setCurrentStep(2);
+      setProgress(25);
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No stream reader");
@@ -190,35 +157,35 @@ export default function GenerateWebsitePage() {
               const delta = data.choices?.[0]?.delta?.content || "";
               if (delta) {
                 fullContent += delta;
-                setStreamedContent(fullContent);
-                // Update status based on content
-                if (fullContent.includes('"css"')) setAiStatus("Writing CSS styles...");
-                else if (fullContent.includes('"js"')) setAiStatus("Adding JavaScript...");
-                else if (fullContent.includes('"html"')) setAiStatus("Writing HTML structure...");
+                // Update step based on content progress
+                if (fullContent.includes('"js"')) {
+                  setCurrentStep(4);
+                  setProgress(75);
+                } else if (fullContent.includes('"css"')) {
+                  setCurrentStep(3);
+                  setProgress(55);
+                } else if (fullContent.includes('"html"')) {
+                  setCurrentStep(2);
+                  setProgress(35);
+                }
               }
             } catch {
-              // skip parse errors
+              // skip
             }
           }
         }
       }
 
-      // Parse the final content with robust cleaning
-      let parsed: GeneratedWebsite;
-      try {
-        parsed = cleanAndParseAIOutput(fullContent);
-      } catch {
-        parsed = { html: fullContent, css: "", js: "", sections: [] };
-      }
+      setCurrentStep(5);
+      setProgress(90);
 
+      const parsed = cleanAndParseAIOutput(fullContent);
       setGenerated(parsed);
-      setActiveTab("preview");
-      setAiStatus("");
+      setProgress(100);
       toast.success("Website generated successfully! 🎉");
     } catch (err: any) {
       console.error("Generation error:", err);
       toast.error(err.message || "Failed to generate website");
-      setAiStatus("");
     } finally {
       setGenerating(false);
     }
@@ -227,9 +194,7 @@ export default function GenerateWebsitePage() {
   const getFullHTML = () => {
     if (!generated) return "";
     const html = generated.html || "";
-    // If AI returned a complete HTML document, use it as-is (just inject missing CSS/JS)
     if (html.trim().toLowerCase().startsWith("<!doctype") || html.trim().toLowerCase().startsWith("<html")) {
-      // Inject CSS before </head> and JS before </body> if not already inline
       let full = html;
       if (generated.css && !html.includes(generated.css.substring(0, 50))) {
         full = full.replace(/<\/head>/i, `<style>${generated.css}</style></head>`);
@@ -254,16 +219,37 @@ ${html}
 </html>`;
   };
 
-  const handleDownload = () => {
-    const html = getFullHTML();
-    const blob = new Blob([html], { type: "text/html" });
+  const handleDownloadZip = async () => {
+    if (!generated) return;
+    const zip = new JSZip();
+    const slug = businessName.toLowerCase().replace(/\s+/g, "-");
+
+    const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${businessName}</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+${generated.html || ""}
+<script src="script.js"><\/script>
+</body>
+</html>`;
+
+    zip.file("index.html", indexHtml);
+    zip.file("style.css", generated.css || "/* No styles */");
+    zip.file("script.js", generated.js || "// No scripts");
+
+    const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${businessName.toLowerCase().replace(/\s+/g, "-")}.html`;
+    a.download = `${slug}.zip`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Website downloaded!");
+    toast.success("Zip downloaded!");
   };
 
   const handlePreviewInNewTab = () => {
@@ -273,11 +259,8 @@ ${html}
     window.open(url, "_blank");
   };
 
-  const CurrentThinkingIcon = thinkingSteps[thinkingStep].icon;
-
   return (
     <div className="max-w-6xl mx-auto relative">
-      {/* Decorative background */}
       <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -289,7 +272,7 @@ ${html}
           <h1 className="font-display text-3xl font-bold">AI Website Generator</h1>
         </div>
         <p className="text-muted-foreground mb-8 ml-12">
-          Describe your business and AI will build a complete website with HTML, CSS & JS.
+          Describe your business and AI will build a complete website.
         </p>
       </motion.div>
 
@@ -347,16 +330,88 @@ ${html}
           </Button>
         </motion.form>
 
-        {/* Preview - 3 cols */}
+        {/* Result area - 3 cols */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="lg:col-span-3"
         >
-          {generated || generating ? (
+          {generating ? (
+            /* Progress Steps UI */
+            <div className="rounded-2xl border border-border bg-card card-shadow p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="relative">
+                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                  <div className="absolute -inset-1 bg-primary/20 rounded-full animate-ping opacity-30" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold">Generating your website...</h3>
+                  <p className="text-xs text-muted-foreground">AI is building {businessName}</p>
+                </div>
+              </div>
+
+              <Progress value={progress} className="h-2 mb-6" />
+
+              <div className="space-y-3">
+                {generationSteps.map((step, i) => {
+                  const StepIcon = step.icon;
+                  const isActive = i === currentStep;
+                  const isDone = i < currentStep;
+                  const isPending = i > currentStep;
+
+                  return (
+                    <motion.div
+                      key={step.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                        isActive
+                          ? "bg-primary/10 border border-primary/20"
+                          : isDone
+                          ? "bg-accent/5"
+                          : "opacity-40"
+                      }`}
+                    >
+                      {isDone ? (
+                        <CheckCircle2 className="h-5 w-5 text-accent flex-shrink-0" />
+                      ) : isActive ? (
+                        <Loader2 className="h-5 w-5 text-primary animate-spin flex-shrink-0" />
+                      ) : (
+                        <Circle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                      )}
+                      <span className={`text-sm font-medium ${
+                        isActive ? "text-primary" : isDone ? "text-foreground" : "text-muted-foreground"
+                      }`}>
+                        {step.label}
+                      </span>
+                      {isDone && (
+                        <span className="ml-auto text-xs text-accent font-medium">Done</span>
+                      )}
+                      {isActive && (
+                        <div className="ml-auto flex gap-1">
+                          {[0, 1, 2].map((d) => (
+                            <div
+                              key={d}
+                              className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
+                              style={{ animationDelay: `${d * 0.15}s` }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground text-center mt-6">
+                This usually takes 15-30 seconds
+              </p>
+            </div>
+          ) : generated ? (
+            /* Preview */
             <div className="rounded-2xl border border-border overflow-hidden bg-card card-shadow">
-              {/* Browser chrome */}
               <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1.5">
@@ -367,88 +422,26 @@ ${html}
                   <span className="text-xs text-muted-foreground ml-2">{businessName || "website"}.html</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setActiveTab("preview")}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      activeTab === "preview" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    disabled={generating && !generated}
-                  >
-                    <Eye className="h-3 w-3 inline mr-1" /> Preview
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("code")}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      activeTab === "code" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <Code className="h-3 w-3 inline mr-1" /> Code
-                  </button>
+                  <CheckCircle2 className="h-4 w-4 text-accent mr-1" />
+                  <span className="text-xs text-accent font-medium">Generated</span>
                 </div>
               </div>
 
-              {/* AI Status Bar */}
-              <AnimatePresence>
-                {generating && aiStatus && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="bg-primary/5 border-b border-primary/10 px-4 py-2 flex items-center gap-3"
-                  >
-                    <div className="relative">
-                      <CurrentThinkingIcon className="h-4 w-4 text-primary animate-pulse" />
-                      <div className="absolute -inset-1 bg-primary/20 rounded-full animate-ping" />
-                    </div>
-                    <span className="text-xs font-medium text-primary">{aiStatus}</span>
-                    <div className="flex-1" />
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce"
-                          style={{ animationDelay: `${i * 0.15}s` }}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <iframe
+                srcDoc={getFullHTML()}
+                className="w-full h-[500px] bg-white"
+                sandbox="allow-scripts"
+                title="Website Preview"
+              />
 
-              {activeTab === "preview" && generated ? (
-                <div className="relative">
-                  <iframe
-                    srcDoc={getFullHTML()}
-                    className="w-full h-[500px] bg-white"
-                    sandbox="allow-scripts"
-                    title="Website Preview"
-                  />
-                </div>
-              ) : (
-                <div className="max-h-[500px] overflow-auto p-4 bg-muted/30" ref={codeRef as any}>
-                  <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap break-all leading-relaxed">
-                    {generating ? (
-                      <>
-                        {streamedContent}
-                        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-0.5" />
-                      </>
-                    ) : generated ? (
-                      getFullHTML()
-                    ) : null}
-                  </pre>
-                </div>
-              )}
-
-              {generated && (
-                <div className="flex gap-2 p-3 border-t border-border bg-muted/50">
-                  <Button size="sm" variant="outline" onClick={handleDownload}>
-                    <Download className="h-3 w-3 mr-1" /> Download
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handlePreviewInNewTab}>
-                    <ExternalLink className="h-3 w-3 mr-1" /> Full Preview
-                  </Button>
-                </div>
-              )}
+              <div className="flex gap-2 p-3 border-t border-border bg-muted/50">
+                <Button size="sm" variant="outline" onClick={handleDownloadZip}>
+                  <Download className="h-3 w-3 mr-1" /> Download ZIP
+                </Button>
+                <Button size="sm" variant="outline" onClick={handlePreviewInNewTab}>
+                  <ExternalLink className="h-3 w-3 mr-1" /> Full Preview
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="h-full min-h-[400px] rounded-2xl border-2 border-dashed border-border flex items-center justify-center bg-card/50">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Globe, Eye, Trash2, Plus, Download, Code, X, Save } from "lucide-react";
+import JSZip from "jszip";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -93,33 +94,35 @@ ${html}
   };
 
   const handleDownloadZip = async (site: Website) => {
-    // Create individual files and zip them using JSZip-like approach with Blob
-    const htmlFile = `<!DOCTYPE html>
+    const zip = new JSZip();
+    const slug = site.name.toLowerCase().replace(/\s+/g, "-");
+
+    const indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${site.name}</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 ${site.html_content || ""}
 <script src="script.js"><\/script>
 </body>
 </html>`;
-    const cssFile = site.css_content || "/* No styles */";
-    const jsFile = site.js_content || "// No scripts";
 
-    // Simple single-file download (HTML with inline CSS/JS)
-    const fullHtml = getFullHTML(site);
-    const blob = new Blob([fullHtml], { type: "text/html" });
+    zip.file("index.html", indexHtml);
+    zip.file("style.css", site.css_content || "/* No styles */");
+    zip.file("script.js", site.js_content || "// No scripts");
+
+    const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${site.name.toLowerCase().replace(/\s+/g, "-")}.html`;
+    a.download = `${slug}.zip`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Downloaded!");
+    toast.success("Zip downloaded!");
   };
 
   const openEditor = (site: Website) => {
