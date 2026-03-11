@@ -106,6 +106,7 @@ export type Database = {
           amount: number | null
           created_at: string
           id: string
+          plan_id: string | null
           screenshot_url: string | null
           sender_number: string
           status: string
@@ -116,6 +117,7 @@ export type Database = {
           amount?: number | null
           created_at?: string
           id?: string
+          plan_id?: string | null
           screenshot_url?: string | null
           sender_number: string
           status?: string
@@ -126,13 +128,22 @@ export type Database = {
           amount?: number | null
           created_at?: string
           id?: string
+          plan_id?: string | null
           screenshot_url?: string | null
           sender_number?: string
           status?: string
           transaction_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payments_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -144,6 +155,8 @@ export type Database = {
           id: string
           phone: string | null
           plan: string
+          plan_expires_at: string | null
+          plan_id: string | null
           updated_at: string
           user_id: string
         }
@@ -156,6 +169,8 @@ export type Database = {
           id?: string
           phone?: string | null
           plan?: string
+          plan_expires_at?: string | null
+          plan_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -168,8 +183,54 @@ export type Database = {
           id?: string
           phone?: string | null
           plan?: string
+          plan_expires_at?: string | null
+          plan_id?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          created_at: string
+          duration_days: number
+          features: string[]
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          duration_days: number
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          duration_days?: number
+          features?: string[]
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
         }
         Relationships: []
       }
