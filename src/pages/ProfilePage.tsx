@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
-import { User, Camera } from "lucide-react";
+import { Camera, Loader2 } from "lucide-react";
 import ProBadge from "@/components/ProBadge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,12 +17,15 @@ export default function ProfilePage() {
   const [company, setCompany] = useState("");
   const [bio, setBio] = useState("");
   const [plan, setPlan] = useState("free");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [websiteCount, setWebsiteCount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
-    const fetch = async () => {
+    const fetchData = async () => {
       const [{ data: profile }, { count }] = await Promise.all([
         supabase.from("profiles").select("*").eq("user_id", user.id).single(),
         supabase.from("websites").select("*", { count: "exact", head: true }).eq("user_id", user.id),
@@ -33,11 +36,58 @@ export default function ProfilePage() {
         setCompany(profile.company || "");
         setBio(profile.bio || "");
         setPlan(profile.plan || "free");
+        setAvatarUrl(profile.avatar_url || null);
       }
       setWebsiteCount(count || 0);
     };
-    fetch();
+    fetchData();
   }, [user]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be less than 2MB");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const filePath = `${user.id}/avatar.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const url = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: url, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id);
+
+      if (updateError) throw updateError;
+
+      setAvatarUrl(url);
+      toast.success("Profile picture updated!");
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +101,10 @@ export default function ProfilePage() {
     else toast.success("Profile updated");
     setSaving(false);
   };
+
+  const initials = name
+    ? name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "U";
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -66,8 +120,37 @@ export default function ProfilePage() {
         className="p-6 rounded-2xl bg-card border border-border card-shadow"
       >
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-20 h-20 rounded-full gradient-bg flex items-center justify-center text-2xl font-display font-bold text-primary-foreground">
-            {name?.[0]?.toUpperCase() || "U"}
+          <div className="relative group">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={name}
+                className="w-20 h-20 rounded-full object-cover border-2 border-primary/30"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full gradient-bg flex items-center justify-center text-2xl font-display font-bold text-primary-foreground">
+                {initials}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+            >
+              {uploading ? (
+                <Loader2 className="h-5 w-5 text-white animate-spin" />
+              ) : (
+                <Camera className="h-5 w-5 text-white" />
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+            />
           </div>
           <div>
             <p className="font-display font-semibold text-lg">{name || "User"}</p>
