@@ -25,16 +25,15 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     if (!user) return;
-    const checkAdmin = async () => {
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .single();
-      setIsAdmin(!!data);
+    const fetchData = async () => {
+      const [{ data: roleData }, { data: profileData }] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").single(),
+        supabase.from("profiles").select("plan").eq("user_id", user.id).single(),
+      ]);
+      setIsAdmin(!!roleData);
+      setPlan(profileData?.plan || "free");
     };
-    checkAdmin();
+    fetchData();
   }, [user]);
 
   const handleLogout = async () => {
