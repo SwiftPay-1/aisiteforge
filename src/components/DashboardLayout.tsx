@@ -21,6 +21,7 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [plan, setPlan] = useState("free");
 
   useEffect(() => {
     if (!user) return;
