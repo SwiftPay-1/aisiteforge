@@ -200,6 +200,14 @@ export default function GenerateWebsitePage() {
       setProgress(10);
 
       // Extract details from the prompt
+      // Simulate progress steps during non-streaming request
+      const progressInterval = setInterval(() => {
+        setCurrentStep(prev => {
+          if (prev < 4) return prev + 1;
+          return prev;
+        });
+      }, 2500);
+
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
         headers: {
@@ -212,49 +220,27 @@ export default function GenerateWebsitePage() {
           category: "General",
           description: userPrompt,
           theme: "modern",
-          stream: true,
         }),
       });
+
+      clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setCurrentStep(2);
-      setProgress(25);
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No stream reader");
-
-      const decoder = new TextDecoder();
-      let fullContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split("\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ") && line !== "data: [DONE]") {
-            try {
-              const data = JSON.parse(line.slice(6));
-              const delta = data.choices?.[0]?.delta?.content || "";
-              if (delta) {
-                fullContent += delta;
-                if (fullContent.includes('"js"')) { setCurrentStep(4); setProgress(75); }
-                else if (fullContent.includes('"css"')) { setCurrentStep(3); setProgress(55); }
-                else if (fullContent.includes('"html"')) { setCurrentStep(2); setProgress(35); }
-              }
-            } catch { /* skip */ }
-          }
-        }
-      }
-
       setCurrentStep(5);
       setProgress(90);
 
-      const parsed = cleanAndParseAIOutput(fullContent);
+      const result = await response.json();
+      const websiteData = result.generated || result;
+      const parsed: GeneratedWebsite = {
+        html: websiteData.html || "",
+        css: websiteData.css || "",
+        js: websiteData.js || "",
+        sections: websiteData.sections || [],
+      };
       setGenerated(parsed);
       setProgress(100);
 
