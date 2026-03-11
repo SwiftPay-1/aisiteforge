@@ -216,7 +216,7 @@ export default function MyWebsitesPage() {
                 <p className="text-xs text-muted-foreground mb-3">{new Date(site.created_at).toLocaleDateString()}</p>
                 <div className="flex gap-2 flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => setPreviewSite(site)}><Eye className="h-3 w-3 mr-1" /> View</Button>
-                  <Button size="sm" variant="outline" onClick={() => openEditor(site)}><Code className="h-3 w-3 mr-1" /> Edit</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/project/${site.id}`)}><Code className="h-3 w-3 mr-1" /> Edit</Button>
                   <Button size="sm" variant="outline" onClick={() => handleDownloadZip(site)}><Download className="h-3 w-3" /></Button>
                   <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDelete(site.id)}><Trash2 className="h-3 w-3" /></Button>
                 </div>

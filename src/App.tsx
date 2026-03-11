@@ -39,6 +39,7 @@ const App = () => (
               <Route index element={<DashboardPage />} />
               <Route path="generate" element={<GenerateWebsitePage />} />
               <Route path="websites" element={<MyWebsitesPage />} />
+              <Route path="project/:id" element={<ProjectPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="payment" element={<PaymentPage />} />
               <Route path="admin" element={<AdminPage />} />
