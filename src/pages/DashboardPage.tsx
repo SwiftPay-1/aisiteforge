@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { motion } from "framer-motion";
-import { Globe, Wand2, CreditCard, ArrowRight, Zap, TrendingUp } from "lucide-react";
+import { Globe, Wand2, CreditCard, ArrowRight, Zap, TrendingUp, Crown } from "lucide-react";
+import ProBadge from "@/components/ProBadge";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
