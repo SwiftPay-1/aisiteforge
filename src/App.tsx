@@ -17,6 +17,7 @@ import MyWebsitesPage from "./pages/MyWebsitesPage";
 import ProfilePage from "./pages/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
 import AdminPage from "./pages/AdminPage";
+import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
               <Route index element={<DashboardPage />} />
               <Route path="generate" element={<GenerateWebsitePage />} />
               <Route path="websites" element={<MyWebsitesPage />} />
+              <Route path="project/:id" element={<ProjectPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="payment" element={<PaymentPage />} />
               <Route path="admin" element={<AdminPage />} />

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Globe, Eye, Trash2, Plus, Download, Code, Save, Send, Wand2, Loader2 } from "lucide-react";
 import JSZip from "jszip";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ interface Website {
 
 export default function MyWebsitesPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [websites, setWebsites] = useState<Website[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewSite, setPreviewSite] = useState<Website | null>(null);
@@ -215,7 +216,7 @@ export default function MyWebsitesPage() {
                 <p className="text-xs text-muted-foreground mb-3">{new Date(site.created_at).toLocaleDateString()}</p>
                 <div className="flex gap-2 flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => setPreviewSite(site)}><Eye className="h-3 w-3 mr-1" /> View</Button>
-                  <Button size="sm" variant="outline" onClick={() => openEditor(site)}><Code className="h-3 w-3 mr-1" /> Edit</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/project/${site.id}`)}><Code className="h-3 w-3 mr-1" /> Edit</Button>
                   <Button size="sm" variant="outline" onClick={() => handleDownloadZip(site)}><Download className="h-3 w-3" /></Button>
                   <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDelete(site.id)}><Trash2 className="h-3 w-3" /></Button>
                 </div>
