@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Globe, Eye, Trash2, Plus, Download, Code, Save, Send, Wand2, Loader2 } from "lucide-react";
 import JSZip from "jszip";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
