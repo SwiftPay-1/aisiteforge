@@ -153,17 +153,30 @@ export default function GenerateWebsitePage() {
 
   const getFullHTML = () => {
     if (!generated) return "";
+    const html = generated.html || "";
+    // If AI returned a complete HTML document, use it as-is (just inject missing CSS/JS)
+    if (html.trim().toLowerCase().startsWith("<!doctype") || html.trim().toLowerCase().startsWith("<html")) {
+      // Inject CSS before </head> and JS before </body> if not already inline
+      let full = html;
+      if (generated.css && !html.includes(generated.css.substring(0, 50))) {
+        full = full.replace(/<\/head>/i, `<style>${generated.css}</style></head>`);
+      }
+      if (generated.js && !html.includes(generated.js.substring(0, 50))) {
+        full = full.replace(/<\/body>/i, `<script>${generated.js}<\/script></body>`);
+      }
+      return full;
+    }
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${businessName}</title>
-  <style>${generated.css}</style>
+  <style>${generated.css || ""}</style>
 </head>
 <body>
-${generated.html}
-<script>${generated.js}<\/script>
+${html}
+<script>${generated.js || ""}<\/script>
 </body>
 </html>`;
   };

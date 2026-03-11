@@ -57,7 +57,19 @@ export default function MyWebsitesPage() {
   };
 
   const getFullHTML = (site: Website) => {
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${site.name}</title><style>${site.css_content || ""}</style></head><body>${site.html_content || ""}<script>${site.js_content || ""}<\/script></body></html>`;
+    const html = site.html_content || "";
+    // If AI returned a complete HTML document, use it directly
+    if (html.trim().toLowerCase().startsWith("<!doctype") || html.trim().toLowerCase().startsWith("<html")) {
+      let full = html;
+      if (site.css_content && !html.includes(site.css_content.substring(0, 50))) {
+        full = full.replace(/<\/head>/i, `<style>${site.css_content}</style></head>`);
+      }
+      if (site.js_content && !html.includes(site.js_content.substring(0, 50))) {
+        full = full.replace(/<\/body>/i, `<script>${site.js_content}<\/script></body>`);
+      }
+      return full;
+    }
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${site.name}</title><style>${site.css_content || ""}</style></head><body>${html}<script>${site.js_content || ""}<\/script></body></html>`;
   };
 
   const getEditPreviewHTML = () => {
