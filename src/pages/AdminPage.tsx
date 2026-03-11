@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Globe, CreditCard, BarChart3, Check, X, Search, Shield, Crown, Edit, Code2, Upload } from "lucide-react";
+import { Users, Globe, CreditCard, Check, X, Search, Shield, Crown, Edit, Code2, Upload, ArrowUpDown, UserCheck, UserX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -23,39 +23,20 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<any>(null);
   const [newPlan, setNewPlan] = useState("");
 
-  // Developer settings state
+  // Developer settings
   const [devSettings, setDevSettings] = useState({
-    id: "",
-    name: "",
-    bio: "",
-    avatar_url: "",
-    email: "",
-    website_url: "",
-    github_url: "",
-    twitter_url: "",
+    id: "", name: "", bio: "", avatar_url: "", email: "", website_url: "", github_url: "", twitter_url: "",
   });
   const [devDialogOpen, setDevDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savingDev, setSavingDev] = useState(false);
 
-  useEffect(() => {
-    checkAdminAndFetch();
-  }, [user]);
+  useEffect(() => { checkAdminAndFetch(); }, [user]);
 
   const checkAdminAndFetch = async () => {
     if (!user) return;
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .single();
-
-    if (!roleData) {
-      setIsAdmin(false);
-      setLoading(false);
-      return;
-    }
+    const { data: roleData } = await supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").single();
+    if (!roleData) { setIsAdmin(false); setLoading(false); return; }
     setIsAdmin(true);
 
     const [{ data: p }, { data: w }, { data: pay }, { data: devData }] = await Promise.all([
@@ -68,16 +49,13 @@ export default function AdminPage() {
     setProfiles(p || []);
     setWebsites(w || []);
     setPayments(pay || []);
-    if (devData) {
-      setDevSettings(devData as any);
-    }
+    if (devData) setDevSettings(devData as any);
     setLoading(false);
   };
 
   const handlePaymentAction = async (paymentId: string, action: "approved" | "rejected") => {
     const { error } = await supabase.from("payments").update({ status: action }).eq("id", paymentId);
     if (error) { toast.error("Failed to update payment"); return; }
-
     if (action === "approved") {
       const payment = payments.find((p) => p.id === paymentId);
       if (payment) {
@@ -85,7 +63,6 @@ export default function AdminPage() {
         setProfiles((prev) => prev.map((p) => p.user_id === payment.user_id ? { ...p, plan: "pro" } : p));
       }
     }
-
     setPayments((prev) => prev.map((p) => (p.id === paymentId ? { ...p, status: action } : p)));
     toast.success(`Payment ${action}`);
   };
@@ -99,6 +76,14 @@ export default function AdminPage() {
     setEditingUser(null);
   };
 
+  const handleQuickPlanToggle = async (profile: any) => {
+    const targetPlan = profile.plan === "pro" ? "free" : "pro";
+    const { error } = await supabase.from("profiles").update({ plan: targetPlan }).eq("user_id", profile.user_id);
+    if (error) { toast.error("Failed to update plan"); return; }
+    setProfiles((prev) => prev.map((p) => p.user_id === profile.user_id ? { ...p, plan: targetPlan } : p));
+    toast.success(`${profile.full_name || "User"} → ${targetPlan === "pro" ? "Pro" : "Free"}`);
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -106,11 +91,7 @@ export default function AdminPage() {
     const ext = file.name.split(".").pop();
     const path = `developer/avatar-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (error) {
-      toast.error("Upload failed");
-      setUploading(false);
-      return;
-    }
+    if (error) { toast.error("Upload failed"); setUploading(false); return; }
     const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
     setDevSettings((prev) => ({ ...prev, avatar_url: urlData.publicUrl }));
     setUploading(false);
@@ -120,16 +101,9 @@ export default function AdminPage() {
   const handleSaveDevSettings = async () => {
     setSavingDev(true);
     const { id, ...rest } = devSettings;
-    const { error } = await supabase
-      .from("developer_settings")
-      .update({ ...rest, updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) {
-      toast.error("Failed to save");
-    } else {
-      toast.success("Developer info updated!");
-      setDevDialogOpen(false);
-    }
+    const { error } = await supabase.from("developer_settings").update({ ...rest, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) toast.error("Failed to save");
+    else { toast.success("Developer info updated!"); setDevDialogOpen(false); }
     setSavingDev(false);
   };
 
@@ -151,22 +125,24 @@ export default function AdminPage() {
     );
   }
 
+  const proCount = profiles.filter((p) => p.plan === "pro").length;
+  const freeCount = profiles.filter((p) => p.plan !== "pro").length;
+  const pendingCount = payments.filter((p) => p.status === "pending").length;
+
   const stats = [
-    { label: "Total Users", value: String(profiles.length), icon: Users },
-    { label: "Total Websites", value: String(websites.length), icon: Globe },
-    { label: "Pro Users", value: String(profiles.filter((p) => p.plan === "pro").length), icon: Crown },
-    { label: "Pending Payments", value: String(payments.filter((p) => p.status === "pending").length), icon: BarChart3 },
+    { label: "Total Users", value: String(profiles.length), icon: Users, color: "text-primary" },
+    { label: "Pro Users", value: String(proCount), icon: Crown, color: "text-yellow-500" },
+    { label: "Free Users", value: String(freeCount), icon: Users, color: "text-muted-foreground" },
+    { label: "Total Websites", value: String(websites.length), icon: Globe, color: "text-accent" },
+    { label: "Pending Payments", value: String(pendingCount), icon: CreditCard, color: pendingCount > 0 ? "text-yellow-500" : "text-muted-foreground" },
   ];
 
   const filtered = (arr: any[], keys: string[]) =>
-    arr.filter((item) =>
-      keys.some((k) => item[k]?.toString().toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    arr.filter((item) => keys.some((k) => item[k]?.toString().toLowerCase().includes(searchTerm.toLowerCase())));
 
   return (
     <div className="max-w-6xl mx-auto relative">
       <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
         <div className="flex items-center justify-between mb-1">
@@ -175,34 +151,30 @@ export default function AdminPage() {
             <h1 className="font-display text-3xl font-bold">Admin Panel</h1>
           </div>
           <Button variant="outline" className="gap-2" onClick={() => setDevDialogOpen(true)}>
-            <Code2 className="h-4 w-4" />
-            Edit Developer Info
+            <Code2 className="h-4 w-4" /> Edit Developer Info
           </Button>
         </div>
-        <p className="text-muted-foreground mb-8">Manage users, websites, and payments.</p>
+        <p className="text-muted-foreground mb-6">Manage users, subscriptions, websites, and payments.</p>
       </motion.div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {stats.map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="p-5 rounded-2xl bg-card border border-border card-shadow"
-          >
-            <stat.icon className="h-6 w-6 mb-2 text-primary" />
+          <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+            className="p-4 rounded-2xl bg-card border border-border card-shadow">
+            <stat.icon className={`h-5 w-5 mb-1.5 ${stat.color}`} />
             <p className="text-2xl font-display font-bold">{stat.value}</p>
-            <p className="text-sm text-muted-foreground">{stat.label}</p>
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
           </motion.div>
         ))}
       </div>
 
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList className="bg-muted">
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="websites">Websites</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="users" className="gap-1"><Users className="h-3 w-3" /> Users</TabsTrigger>
+          <TabsTrigger value="subscriptions" className="gap-1"><Crown className="h-3 w-3" /> Subscriptions</TabsTrigger>
+          <TabsTrigger value="websites" className="gap-1"><Globe className="h-3 w-3" /> Websites</TabsTrigger>
+          <TabsTrigger value="payments" className="gap-1"><CreditCard className="h-3 w-3" /> Payments</TabsTrigger>
         </TabsList>
 
         <div className="relative mb-4">
@@ -210,6 +182,7 @@ export default function AdminPage() {
           <Input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
         </div>
 
+        {/* Users tab */}
         <TabsContent value="users">
           <div className="rounded-2xl border border-border bg-card overflow-x-auto">
             <table className="w-full text-sm">
@@ -223,21 +196,17 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {filtered(profiles, ["full_name", "plan"]).map((u) => (
-                  <tr key={u.id} className="border-b border-border last:border-0">
+                  <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                     <td className="p-3 font-medium">{u.full_name || "—"}</td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted"}`}>
-                        {u.plan === "pro" ? "Pro" : "Free"}
+                        {u.plan === "pro" ? "⭐ Pro" : "Free"}
                       </span>
                     </td>
                     <td className="p-3 text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                     <td className="p-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setEditingUser(u); setNewPlan(u.plan || "free"); }}
-                      >
-                        <Edit className="h-3 w-3 mr-1" /> Edit Plan
+                      <Button size="sm" variant="outline" onClick={() => { setEditingUser(u); setNewPlan(u.plan || "free"); }}>
+                        <Edit className="h-3 w-3 mr-1" /> Edit
                       </Button>
                     </td>
                   </tr>
@@ -247,6 +216,94 @@ export default function AdminPage() {
           </div>
         </TabsContent>
 
+        {/* Subscriptions tab - NEW */}
+        <TabsContent value="subscriptions">
+          <div className="space-y-4">
+            {/* Quick actions */}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="p-4 rounded-2xl bg-card border border-border card-shadow">
+                <div className="flex items-center gap-2 mb-2">
+                  <UserCheck className="h-5 w-5 text-yellow-500" />
+                  <h3 className="font-display font-semibold text-sm">Pro Users ({proCount})</h3>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">Click a user to downgrade to Free plan</p>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                  {profiles.filter(p => p.plan === "pro").map(p => (
+                    <button key={p.id} onClick={() => handleQuickPlanToggle(p)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-all">
+                      <Crown className="h-3 w-3" />
+                      {p.full_name || "Unnamed"}
+                      <X className="h-3 w-3 opacity-50" />
+                    </button>
+                  ))}
+                  {proCount === 0 && <p className="text-xs text-muted-foreground">No pro users yet</p>}
+                </div>
+              </div>
+              <div className="p-4 rounded-2xl bg-card border border-border card-shadow">
+                <div className="flex items-center gap-2 mb-2">
+                  <UserX className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="font-display font-semibold text-sm">Free Users ({freeCount})</h3>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">Click a user to upgrade to Pro plan</p>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                  {profiles.filter(p => p.plan !== "pro").map(p => (
+                    <button key={p.id} onClick={() => handleQuickPlanToggle(p)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border hover:bg-accent/10 hover:text-accent hover:border-accent/20 transition-all">
+                      {p.full_name || "Unnamed"}
+                      <Crown className="h-3 w-3 opacity-50" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Full subscription table */}
+            <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="p-3 text-left font-medium">User</th>
+                    <th className="p-3 text-left font-medium">Current Plan</th>
+                    <th className="p-3 text-left font-medium">Websites</th>
+                    <th className="p-3 text-left font-medium">Quick Switch</th>
+                    <th className="p-3 text-left font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered(profiles, ["full_name", "plan"]).map((u) => {
+                    const userWebsites = websites.filter(w => w.user_id === u.user_id).length;
+                    return (
+                      <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                        <td className="p-3 font-medium">{u.full_name || "—"}</td>
+                        <td className="p-3">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${u.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                            {u.plan === "pro" ? "⭐ Pro" : "Free"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-muted-foreground">{userWebsites}</td>
+                        <td className="p-3">
+                          <Button size="sm" variant={u.plan === "pro" ? "outline" : "default"}
+                            className={u.plan === "pro" ? "text-destructive border-destructive/30 hover:bg-destructive/10" : "gradient-bg border-0 text-primary-foreground"}
+                            onClick={() => handleQuickPlanToggle(u)}>
+                            <ArrowUpDown className="h-3 w-3 mr-1" />
+                            {u.plan === "pro" ? "→ Free" : "→ Pro"}
+                          </Button>
+                        </td>
+                        <td className="p-3">
+                          <Button size="sm" variant="outline" onClick={() => { setEditingUser(u); setNewPlan(u.plan || "free"); }}>
+                            <Edit className="h-3 w-3 mr-1" /> Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Websites tab */}
         <TabsContent value="websites">
           <div className="rounded-2xl border border-border bg-card overflow-x-auto">
             <table className="w-full text-sm">
@@ -260,7 +317,7 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {filtered(websites, ["name", "category"]).map((w) => (
-                  <tr key={w.id} className="border-b border-border last:border-0">
+                  <tr key={w.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                     <td className="p-3 font-medium">{w.name}</td>
                     <td className="p-3 text-muted-foreground">{w.category}</td>
                     <td className="p-3"><span className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary">{w.theme}</span></td>
@@ -272,6 +329,7 @@ export default function AdminPage() {
           </div>
         </TabsContent>
 
+        {/* Payments tab */}
         <TabsContent value="payments">
           <div className="rounded-2xl border border-border bg-card overflow-x-auto">
             <table className="w-full text-sm">
@@ -286,7 +344,7 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {filtered(payments, ["transaction_id", "sender_number"]).map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0">
+                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                     <td className="p-3 font-mono text-xs">{p.transaction_id}</td>
                     <td className="p-3 text-muted-foreground">{p.sender_number}</td>
                     <td className="p-3">
@@ -334,7 +392,7 @@ export default function AdminPage() {
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
+                  <SelectItem value="pro">⭐ Pro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -353,7 +411,6 @@ export default function AdminPage() {
             <DialogTitle className="font-display">Edit Developer Info</DialogTitle>
           </DialogHeader>
           <div className="space-y-5">
-            {/* Avatar */}
             <div className="flex items-center gap-4">
               {devSettings.avatar_url ? (
                 <img src={devSettings.avatar_url} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary/30" />
@@ -373,7 +430,6 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
-
             <div className="grid gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">Display Name</Label>
@@ -400,7 +456,6 @@ export default function AdminPage() {
                 <Input value={devSettings.twitter_url} onChange={(e) => setDevSettings((p) => ({ ...p, twitter_url: e.target.value }))} className="mt-1" placeholder="https://x.com/username" />
               </div>
             </div>
-
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDevDialogOpen(false)}>Cancel</Button>
               <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleSaveDevSettings} disabled={savingDev}>

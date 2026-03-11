@@ -6,64 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/**
- * Cleans raw LLM output into a valid JSON string.
- * Handles markdown fences, trailing commas, control chars, and truncation.
- */
 function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
-  // 1. Strip markdown code fences
-  let cleaned = raw
-    .replace(/^```(?:json)?\s*/gim, "")
-    .replace(/```\s*$/gim, "")
-    .trim();
-
-  // 2. Find the outermost JSON object
+  let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
   if (firstBrace === -1) return null;
-
   if (lastBrace > firstBrace) {
     cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   } else {
-    // Truncated – no closing brace. Try to repair.
     cleaned = cleaned.substring(firstBrace);
-    // Close any open strings and structures
     cleaned = repairTruncatedJSON(cleaned);
   }
-
-  // 3. Remove control characters (except normal whitespace)
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
-
-  // 4. Fix trailing commas before } or ]
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-
-  // 5. Try parsing
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // Try a more aggressive repair
-    try {
-      return JSON.parse(repairTruncatedJSON(cleaned));
-    } catch {
-      return null;
-    }
+  try { return JSON.parse(cleaned); } catch {
+    try { return JSON.parse(repairTruncatedJSON(cleaned)); } catch { return null; }
   }
 }
 
-/**
- * Attempts to repair truncated JSON by closing open strings, arrays, objects.
- */
 function repairTruncatedJSON(json: string): string {
-  let result = json;
-
-  // Remove trailing commas
-  result = result.replace(/,\s*$/, "");
-
-  // Count open/close braces and brackets
-  let inString = false;
-  let escape = false;
+  let result = json.replace(/,\s*$/, "");
+  let inString = false, escape = false;
   const stack: string[] = [];
-
   for (let i = 0; i < result.length; i++) {
     const ch = result[i];
     if (escape) { escape = false; continue; }
@@ -74,18 +38,8 @@ function repairTruncatedJSON(json: string): string {
     else if (ch === "[") stack.push("]");
     else if (ch === "}" || ch === "]") stack.pop();
   }
-
-  // If we're still inside a string, close it
   if (inString) result += '"';
-
-  // Remove any trailing partial key-value (e.g. `"key": "some trunc`)
-  // Already handled by closing the string above
-
-  // Close remaining open structures
-  while (stack.length > 0) {
-    result += stack.pop();
-  }
-
+  while (stack.length > 0) result += stack.pop();
   return result;
 }
 
@@ -141,34 +95,62 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are a website builder. Output a JSON object with keys: html, css, js, sections.
+    const systemPrompt = `You are an elite, world-class website developer and designer. You produce pixel-perfect, visually stunning, production-ready websites that look like they were built by a top design agency.
 
-RULES:
-1. Return ONLY raw JSON. No markdown. No backticks. No explanation text.
-2. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
-3. "css" = all CSS. Include @import for Google Fonts. Keep it SHORT and VALID.
-4. "js" = JavaScript for menu toggle, smooth scroll, scroll animations.
-5. "sections" = [{type, title, content}] array describing each section.
+OUTPUT FORMAT: Return ONLY raw JSON with keys: html, css, js, sections. NO markdown, NO backticks, NO explanation.
 
-CRITICAL CSS RULES:
-- Every CSS property MUST be complete. Never truncate values.
-- Use shorthand properties (margin, padding, background, border, font).
-- Combine selectors that share styles.
-- NO duplicate rules. NO excessive comments.
-- Keep total CSS under 200 lines.
-- Use CSS variables for repeated values.
+DESIGN EXCELLENCE RULES:
+1. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
+2. Use modern, semantic HTML5 (header, nav, main, section, article, footer).
+3. Include Font Awesome 6 CDN via @import in CSS: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css
+4. Use https://placehold.co/ for placeholder images with proper dimensions.
+5. Every element must have thoughtful spacing, typography, and visual hierarchy.
 
-CRITICAL HTML RULES:
-- Every tag must be properly closed.
-- Use semantic HTML (header, nav, main, section, footer).
-- Use Font Awesome CDN for icons: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css (add as @import in CSS)
-- Use https://placehold.co/ for images.
+CSS MASTERY:
+- Use CSS custom properties (variables) for colors, fonts, spacing.
+- Include a Google Font import (@import) that matches the theme.
+- Use gradients, box-shadows, backdrop-filter for depth.
+- Smooth transitions on all interactive elements (0.3s ease).
+- Mobile-first responsive design with clean breakpoints.
+- Use grid and flexbox for layouts.
+- Add subtle hover effects on cards, buttons, links.
+- Keep CSS well-organized: variables → resets → typography → layout → components → responsive.
 
-Include sections: navbar, hero, about, services/skills, projects, contact form, footer.
-Theme: ${theme}. Make it responsive.
-Keep total output COMPACT - under 3500 tokens.`;
+JAVASCRIPT FEATURES:
+- Smooth scroll navigation.
+- Mobile hamburger menu toggle.
+- Scroll-triggered fade-in animations using IntersectionObserver.
+- Sticky header with background change on scroll.
+- Form validation with visual feedback.
+- Dark/light mode toggle if theme is "dark".
 
-    const userPrompt = `Build a ${theme} website for "${businessName}" (${category}). ${description}. Return JSON now.`;
+REQUIRED SECTIONS (in order):
+1. Navigation bar - sticky, responsive, with logo and CTA button
+2. Hero section - large heading, subtitle, dual CTAs, background visual
+3. About/Features section - icon cards in grid
+4. Services/Skills section - detailed cards with icons
+5. Projects/Portfolio - image cards with hover overlay
+6. Testimonials - carousel or grid with avatars
+7. Contact form - styled inputs with validation
+8. Footer - multi-column with links, social icons, copyright
+
+QUALITY STANDARDS:
+- Professional color palette with proper contrast ratios.
+- Consistent spacing system (8px grid).
+- Typography hierarchy: distinct h1-h6 sizes.
+- All images have alt text.
+- Interactive elements have focus states.
+- Animations are smooth and not excessive.
+
+"sections" = [{type, title, content}] array describing each section.
+Theme: ${theme}. Category: ${category}.
+Produce COMPLETE, POLISHED output. This should look like a real production website.`;
+
+    const userPrompt = `Build a stunning ${theme} website for "${businessName}" (${category} industry).
+
+Description: ${description}
+
+Make it look absolutely professional and modern. Every detail matters - typography, colors, spacing, animations. This should impress anyone who sees it. Return the complete JSON now.`;
 
     if (stream) {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -183,8 +165,8 @@ Keep total output COMPACT - under 3500 tokens.`;
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0.6,
-          max_tokens: 16000,
+          temperature: 0.7,
+          max_tokens: 32000,
           stream: true,
         }),
       });
@@ -192,12 +174,21 @@ Keep total output COMPACT - under 3500 tokens.`;
       if (!response.ok) {
         const errorText = await response.text();
         console.error("AI gateway error:", response.status, errorText);
+        if (response.status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit reached. Please try again in a moment." }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (response.status === 402) {
+          return new Response(JSON.stringify({ error: "AI credits exhausted. Please try again later." }), {
+            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         return new Response(JSON.stringify({ error: "AI generation failed" }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const encoder = new TextEncoder();
       const decoder = new TextDecoder();
       let fullContent = "";
 
@@ -207,29 +198,21 @@ Keep total output COMPACT - under 3500 tokens.`;
           fullContent += extractContent(text);
           controller.enqueue(chunk);
         },
-        async flush(controller) {
+        async flush() {
           try {
             const parsed = cleanAndParseJSON(fullContent);
             const websiteData = parsed || {
-              html: fullContent,
-              css: "",
-              js: "",
+              html: fullContent, css: "", js: "",
               sections: [{ type: "hero", title: businessName, content: description }],
             };
 
-            await adminClient
-              .from("websites")
-              .insert({
-                user_id: user.id,
-                name: businessName,
-                category,
-                description,
-                theme,
-                html_content: (websiteData.html as string) || "",
-                css_content: (websiteData.css as string) || "",
-                js_content: (websiteData.js as string) || "",
-                preview_data: (websiteData.sections as unknown[]) || [],
-              });
+            await adminClient.from("websites").insert({
+              user_id: user.id, name: businessName, category, description, theme,
+              html_content: (websiteData.html as string) || "",
+              css_content: (websiteData.css as string) || "",
+              js_content: (websiteData.js as string) || "",
+              preview_data: (websiteData.sections as unknown[]) || [],
+            });
 
             const { data: existingUsage } = await adminClient
               .from("daily_usage")
@@ -239,13 +222,11 @@ Keep total output COMPACT - under 3500 tokens.`;
               .single();
 
             if (existingUsage) {
-              await adminClient
-                .from("daily_usage")
+              await adminClient.from("daily_usage")
                 .update({ generation_count: existingUsage.generation_count + 1 })
                 .eq("id", existingUsage.id);
             } else {
-              await adminClient
-                .from("daily_usage")
+              await adminClient.from("daily_usage")
                 .insert({ user_id: user.id, usage_date: today, generation_count: 1 });
             }
           } catch (e) {
@@ -266,7 +247,7 @@ Keep total output COMPACT - under 3500 tokens.`;
       });
     }
 
-    // Non-streaming mode (fallback)
+    // Non-streaming fallback
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -279,8 +260,8 @@ Keep total output COMPACT - under 3500 tokens.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.6,
-        max_tokens: 16000,
+        temperature: 0.7,
+        max_tokens: 32000,
       }),
     });
 
@@ -305,9 +286,7 @@ Keep total output COMPACT - under 3500 tokens.`;
 
     const parsed = cleanAndParseJSON(rawContent);
     const websiteData = parsed || {
-      html: rawContent,
-      css: "",
-      js: "",
+      html: rawContent, css: "", js: "",
       sections: [
         { type: "hero", title: businessName, content: description },
         { type: "about", title: "About Us", content: `${businessName} is a leading ${category} company.` },
@@ -317,11 +296,7 @@ Keep total output COMPACT - under 3500 tokens.`;
     const { data: website, error: dbError } = await adminClient
       .from("websites")
       .insert({
-        user_id: user.id,
-        name: businessName,
-        category,
-        description,
-        theme,
+        user_id: user.id, name: businessName, category, description, theme,
         html_content: (websiteData.html as string) || "",
         css_content: (websiteData.css as string) || "",
         js_content: (websiteData.js as string) || "",
@@ -343,13 +318,11 @@ Keep total output COMPACT - under 3500 tokens.`;
       .single();
 
     if (existingUsage) {
-      await adminClient
-        .from("daily_usage")
+      await adminClient.from("daily_usage")
         .update({ generation_count: existingUsage.generation_count + 1 })
         .eq("id", existingUsage.id);
     } else {
-      await adminClient
-        .from("daily_usage")
+      await adminClient.from("daily_usage")
         .insert({ user_id: user.id, usage_date: today, generation_count: 1 });
     }
 
@@ -374,9 +347,7 @@ function extractContent(sseText: string): string {
       try {
         const data = JSON.parse(line.slice(6));
         content += data.choices?.[0]?.delta?.content || "";
-      } catch {
-        // skip
-      }
+      } catch { /* skip */ }
     }
   }
   return content;

@@ -28,7 +28,8 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are a website editor. You will receive existing website code (HTML, CSS, JS) and a user's edit request.
+    const systemPrompt = `You are an elite website editor and full-stack developer. You will receive existing website code (HTML, CSS, JS) and a user's edit request.
+
 Apply the requested changes and return the COMPLETE updated code as a JSON object with keys: html, css, js.
 
 RULES:
@@ -36,9 +37,21 @@ RULES:
 2. "html" = inner body HTML only. NO <!DOCTYPE>, <html>, <head>, <body> tags.
 3. "css" = all CSS including @import for fonts.
 4. "js" = all JavaScript.
-5. Preserve all existing functionality unless the user asks to remove it.
+5. Preserve ALL existing functionality unless the user asks to remove it.
 6. Apply ONLY the changes the user requested.
-7. Keep total output COMPACT.`;
+7. Maintain professional design quality - proper spacing, typography, colors.
+
+MULTI-LANGUAGE BACKEND SUPPORT:
+- If user asks to add backend code (Python, Flask, PHP, C, C++, MySQL, SQLite, etc.), include it as commented instructions or setup scripts within the JS section.
+- For Python/Flask: provide a complete app.py structure as a comment block.
+- For database: provide SQL schema and setup instructions.
+- For any language: provide clear, runnable code examples.
+
+DESIGN QUALITY:
+- Ensure all changes maintain visual consistency.
+- Use smooth transitions and modern CSS.
+- Keep responsive design intact.
+- Use proper color contrast and spacing.`;
 
     const userPrompt = `Current HTML:\n${currentHtml || "(empty)"}\n\nCurrent CSS:\n${currentCss || "(empty)"}\n\nCurrent JS:\n${currentJs || "(empty)"}\n\nUser's edit request: ${prompt}\n\nApply the changes and return the updated JSON now.`;
 
