@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Globe, CreditCard, Check, X, Search, Shield, Crown, Edit, Code2, Upload, ArrowUpDown, UserCheck, UserX } from "lucide-react";
+import { Users, Globe, CreditCard, Check, X, Search, Shield, Crown, Edit, Code2, Upload, ArrowUpDown, UserCheck, UserX, Package, Plus, Trash2, ToggleLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -18,10 +19,15 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [websites, setWebsites] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [newPlan, setNewPlan] = useState("");
+
+  // Plan editing
+  const [editingPlan, setEditingPlan] = useState<any>(null);
+  const [planForm, setPlanForm] = useState({ name: "", duration_days: 0, price: 0, features: "", is_active: true, sort_order: 0 });
 
   // Developer settings
   const [devSettings, setDevSettings] = useState({
@@ -39,16 +45,18 @@ export default function AdminPage() {
     if (!roleData) { setIsAdmin(false); setLoading(false); return; }
     setIsAdmin(true);
 
-    const [{ data: p }, { data: w }, { data: pay }, { data: devData }] = await Promise.all([
+    const [{ data: p }, { data: w }, { data: pay }, { data: devData }, { data: plansData }] = await Promise.all([
       supabase.from("profiles").select("*"),
       supabase.from("websites").select("*"),
       supabase.from("payments").select("*").order("created_at", { ascending: false }),
       supabase.from("developer_settings").select("*").limit(1).single(),
+      supabase.from("subscription_plans").select("*").order("sort_order"),
     ]);
 
     setProfiles(p || []);
     setWebsites(w || []);
     setPayments(pay || []);
+    setPlans(plansData || []);
     if (devData) setDevSettings(devData as any);
     setLoading(false);
   };
@@ -59,8 +67,10 @@ export default function AdminPage() {
     if (action === "approved") {
       const payment = payments.find((p) => p.id === paymentId);
       if (payment) {
-        await supabase.from("profiles").update({ plan: "pro" }).eq("user_id", payment.user_id);
-        setProfiles((prev) => prev.map((p) => p.user_id === payment.user_id ? { ...p, plan: "pro" } : p));
+        const plan = plans.find(pl => pl.id === payment.plan_id);
+        const expiresAt = plan ? new Date(Date.now() + plan.duration_days * 86400000).toISOString() : null;
+        await supabase.from("profiles").update({ plan: "pro", plan_id: payment.plan_id, plan_expires_at: expiresAt }).eq("user_id", payment.user_id);
+        setProfiles((prev) => prev.map((p) => p.user_id === payment.user_id ? { ...p, plan: "pro", plan_id: payment.plan_id, plan_expires_at: expiresAt } : p));
       }
     }
     setPayments((prev) => prev.map((p) => (p.id === paymentId ? { ...p, status: action } : p)));
@@ -78,10 +88,54 @@ export default function AdminPage() {
 
   const handleQuickPlanToggle = async (profile: any) => {
     const targetPlan = profile.plan === "pro" ? "free" : "pro";
-    const { error } = await supabase.from("profiles").update({ plan: targetPlan }).eq("user_id", profile.user_id);
+    const updates: any = { plan: targetPlan };
+    if (targetPlan === "free") { updates.plan_id = null; updates.plan_expires_at = null; }
+    const { error } = await supabase.from("profiles").update(updates).eq("user_id", profile.user_id);
     if (error) { toast.error("Failed to update plan"); return; }
-    setProfiles((prev) => prev.map((p) => p.user_id === profile.user_id ? { ...p, plan: targetPlan } : p));
+    setProfiles((prev) => prev.map((p) => p.user_id === profile.user_id ? { ...p, ...updates } : p));
     toast.success(`${profile.full_name || "User"} → ${targetPlan === "pro" ? "Pro" : "Free"}`);
+  };
+
+  // Plan CRUD
+  const openPlanEditor = (plan?: any) => {
+    if (plan) {
+      setEditingPlan(plan);
+      setPlanForm({ name: plan.name, duration_days: plan.duration_days, price: Number(plan.price), features: (plan.features || []).join("\n"), is_active: plan.is_active, sort_order: plan.sort_order });
+    } else {
+      setEditingPlan("new");
+      setPlanForm({ name: "", duration_days: 7, price: 0, features: "", is_active: true, sort_order: plans.length + 1 });
+    }
+  };
+
+  const handleSavePlan = async () => {
+    const featuresArr = planForm.features.split("\n").map(f => f.trim()).filter(Boolean);
+    const payload = { name: planForm.name, duration_days: planForm.duration_days, price: planForm.price, features: featuresArr, is_active: planForm.is_active, sort_order: planForm.sort_order, updated_at: new Date().toISOString() };
+
+    if (editingPlan === "new") {
+      const { data, error } = await supabase.from("subscription_plans").insert(payload).select().single();
+      if (error) { toast.error("Failed to create plan"); return; }
+      setPlans(prev => [...prev, data].sort((a, b) => a.sort_order - b.sort_order));
+      toast.success("Plan created!");
+    } else {
+      const { error } = await supabase.from("subscription_plans").update(payload).eq("id", editingPlan.id);
+      if (error) { toast.error("Failed to update plan"); return; }
+      setPlans(prev => prev.map(p => p.id === editingPlan.id ? { ...p, ...payload, features: featuresArr } : p).sort((a, b) => a.sort_order - b.sort_order));
+      toast.success("Plan updated!");
+    }
+    setEditingPlan(null);
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    const { error } = await supabase.from("subscription_plans").delete().eq("id", planId);
+    if (error) { toast.error("Failed to delete plan"); return; }
+    setPlans(prev => prev.filter(p => p.id !== planId));
+    toast.success("Plan deleted");
+  };
+
+  const handleTogglePlanActive = async (plan: any) => {
+    const { error } = await supabase.from("subscription_plans").update({ is_active: !plan.is_active }).eq("id", plan.id);
+    if (error) { toast.error("Failed"); return; }
+    setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, is_active: !p.is_active } : p));
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,6 +226,7 @@ export default function AdminPage() {
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList className="bg-muted">
           <TabsTrigger value="users" className="gap-1"><Users className="h-3 w-3" /> Users</TabsTrigger>
+          <TabsTrigger value="plans" className="gap-1"><Package className="h-3 w-3" /> Plans</TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-1"><Crown className="h-3 w-3" /> Subscriptions</TabsTrigger>
           <TabsTrigger value="websites" className="gap-1"><Globe className="h-3 w-3" /> Websites</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1"><CreditCard className="h-3 w-3" /> Payments</TabsTrigger>
@@ -216,17 +271,58 @@ export default function AdminPage() {
           </div>
         </TabsContent>
 
-        {/* Subscriptions tab - NEW */}
+        {/* Plans tab - NEW */}
+        <TabsContent value="plans">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-semibold">Subscription Plans</h3>
+              <Button size="sm" className="gradient-bg border-0 text-primary-foreground gap-1" onClick={() => openPlanEditor()}>
+                <Plus className="h-3.5 w-3.5" /> Add Plan
+              </Button>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {plans.map((plan) => (
+                <div key={plan.id} className={`relative p-5 rounded-2xl border-2 bg-card transition-all ${plan.is_active ? "border-border" : "border-destructive/20 opacity-60"}`}>
+                  {!plan.is_active && (
+                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-destructive/10 text-destructive">Inactive</span>
+                  )}
+                  <h4 className="font-display font-bold mb-1">{plan.name}</h4>
+                  <p className="text-2xl font-display font-bold text-primary">৳{plan.price}</p>
+                  <p className="text-xs text-muted-foreground mb-3">{plan.duration_days} days</p>
+                  <ul className="space-y-1 mb-4">
+                    {(plan.features || []).map((f: string) => (
+                      <li key={f} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Check className="h-3 w-3 text-accent flex-shrink-0" /> {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => openPlanEditor(plan)}>
+                      <Edit className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleTogglePlanActive(plan)}>
+                      <ToggleLeft className="h-3 w-3" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeletePlan(plan.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Subscriptions tab */}
         <TabsContent value="subscriptions">
           <div className="space-y-4">
-            {/* Quick actions */}
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="p-4 rounded-2xl bg-card border border-border card-shadow">
                 <div className="flex items-center gap-2 mb-2">
                   <UserCheck className="h-5 w-5 text-yellow-500" />
                   <h3 className="font-display font-semibold text-sm">Pro Users ({proCount})</h3>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">Click a user to downgrade to Free plan</p>
+                <p className="text-xs text-muted-foreground mb-3">Click to downgrade to Free</p>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                   {profiles.filter(p => p.plan === "pro").map(p => (
                     <button key={p.id} onClick={() => handleQuickPlanToggle(p)}
@@ -244,7 +340,7 @@ export default function AdminPage() {
                   <UserX className="h-5 w-5 text-muted-foreground" />
                   <h3 className="font-display font-semibold text-sm">Free Users ({freeCount})</h3>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">Click a user to upgrade to Pro plan</p>
+                <p className="text-xs text-muted-foreground mb-3">Click to upgrade to Pro</p>
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                   {profiles.filter(p => p.plan !== "pro").map(p => (
                     <button key={p.id} onClick={() => handleQuickPlanToggle(p)}
@@ -257,46 +353,38 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Full subscription table */}
             <div className="rounded-2xl border border-border bg-card overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/50">
                     <th className="p-3 text-left font-medium">User</th>
-                    <th className="p-3 text-left font-medium">Current Plan</th>
-                    <th className="p-3 text-left font-medium">Websites</th>
+                    <th className="p-3 text-left font-medium">Plan</th>
+                    <th className="p-3 text-left font-medium">Expires</th>
                     <th className="p-3 text-left font-medium">Quick Switch</th>
-                    <th className="p-3 text-left font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered(profiles, ["full_name", "plan"]).map((u) => {
-                    const userWebsites = websites.filter(w => w.user_id === u.user_id).length;
-                    return (
-                      <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="p-3 font-medium">{u.full_name || "—"}</td>
-                        <td className="p-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${u.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                            {u.plan === "pro" ? "⭐ Pro" : "Free"}
-                          </span>
-                        </td>
-                        <td className="p-3 text-muted-foreground">{userWebsites}</td>
-                        <td className="p-3">
-                          <Button size="sm" variant={u.plan === "pro" ? "outline" : "default"}
-                            className={u.plan === "pro" ? "text-destructive border-destructive/30 hover:bg-destructive/10" : "gradient-bg border-0 text-primary-foreground"}
-                            onClick={() => handleQuickPlanToggle(u)}>
-                            <ArrowUpDown className="h-3 w-3 mr-1" />
-                            {u.plan === "pro" ? "→ Free" : "→ Pro"}
-                          </Button>
-                        </td>
-                        <td className="p-3">
-                          <Button size="sm" variant="outline" onClick={() => { setEditingUser(u); setNewPlan(u.plan || "free"); }}>
-                            <Edit className="h-3 w-3 mr-1" /> Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filtered(profiles, ["full_name", "plan"]).map((u) => (
+                    <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="p-3 font-medium">{u.full_name || "—"}</td>
+                      <td className="p-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${u.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                          {u.plan === "pro" ? "⭐ Pro" : "Free"}
+                        </span>
+                      </td>
+                      <td className="p-3 text-muted-foreground text-xs">
+                        {u.plan_expires_at ? new Date(u.plan_expires_at).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="p-3">
+                        <Button size="sm" variant={u.plan === "pro" ? "outline" : "default"}
+                          className={u.plan === "pro" ? "text-destructive border-destructive/30 hover:bg-destructive/10" : "gradient-bg border-0 text-primary-foreground"}
+                          onClick={() => handleQuickPlanToggle(u)}>
+                          <ArrowUpDown className="h-3 w-3 mr-1" />
+                          {u.plan === "pro" ? "→ Free" : "→ Pro"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -337,45 +425,52 @@ export default function AdminPage() {
                 <tr className="border-b border-border bg-muted/50">
                   <th className="p-3 text-left font-medium">TXN ID</th>
                   <th className="p-3 text-left font-medium">Sender</th>
+                  <th className="p-3 text-left font-medium">Amount</th>
+                  <th className="p-3 text-left font-medium">Plan</th>
                   <th className="p-3 text-left font-medium">Status</th>
                   <th className="p-3 text-left font-medium">Date</th>
                   <th className="p-3 text-left font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered(payments, ["transaction_id", "sender_number"]).map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                    <td className="p-3 font-mono text-xs">{p.transaction_id}</td>
-                    <td className="p-3 text-muted-foreground">{p.sender_number}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.status === "approved" ? "bg-accent/10 text-accent" :
-                        p.status === "rejected" ? "bg-destructive/10 text-destructive" :
-                        "bg-yellow-500/10 text-yellow-600"
-                      }`}>{p.status}</span>
-                    </td>
-                    <td className="p-3 text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</td>
-                    <td className="p-3 flex gap-1">
-                      {p.status === "pending" && (
-                        <>
-                          <Button size="sm" variant="outline" className="text-accent" onClick={() => handlePaymentAction(p.id, "approved")}>
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-destructive" onClick={() => handlePaymentAction(p.id, "rejected")}>
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {filtered(payments, ["transaction_id", "sender_number"]).map((p) => {
+                  const planName = plans.find(pl => pl.id === p.plan_id)?.name || "—";
+                  return (
+                    <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="p-3 font-mono text-xs">{p.transaction_id}</td>
+                      <td className="p-3 text-muted-foreground">{p.sender_number}</td>
+                      <td className="p-3 font-medium">৳{p.amount}</td>
+                      <td className="p-3 text-xs">{planName}</td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          p.status === "approved" ? "bg-accent/10 text-accent" :
+                          p.status === "rejected" ? "bg-destructive/10 text-destructive" :
+                          "bg-yellow-500/10 text-yellow-600"
+                        }`}>{p.status}</span>
+                      </td>
+                      <td className="p-3 text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</td>
+                      <td className="p-3 flex gap-1">
+                        {p.status === "pending" && (
+                          <>
+                            <Button size="sm" variant="outline" className="text-accent" onClick={() => handlePaymentAction(p.id, "approved")}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-destructive" onClick={() => handlePaymentAction(p.id, "rejected")}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </TabsContent>
       </Tabs>
 
-      {/* Edit Plan Dialog */}
+      {/* Edit User Plan Dialog */}
       <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -384,7 +479,6 @@ export default function AdminPage() {
           <div className="space-y-4">
             <div>
               <p className="text-sm text-muted-foreground mb-1">User: <strong>{editingUser?.full_name || "—"}</strong></p>
-              <p className="text-sm text-muted-foreground">Current: <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${editingUser?.plan === "pro" ? "gradient-bg text-primary-foreground" : "bg-muted"}`}>{editingUser?.plan || "free"}</span></p>
             </div>
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New Plan</label>
@@ -399,6 +493,51 @@ export default function AdminPage() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
               <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleUpdatePlan}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Plan Dialog */}
+      <Dialog open={!!editingPlan} onOpenChange={() => setEditingPlan(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">{editingPlan === "new" ? "Create Plan" : "Edit Plan"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs text-muted-foreground">Plan Name</Label>
+              <Input value={planForm.name} onChange={e => setPlanForm(p => ({ ...p, name: e.target.value }))} className="mt-1" placeholder="e.g. 7 Days Starter" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Duration (days)</Label>
+                <Input type="number" value={planForm.duration_days} onChange={e => setPlanForm(p => ({ ...p, duration_days: Number(e.target.value) }))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Price (৳)</Label>
+                <Input type="number" value={planForm.price} onChange={e => setPlanForm(p => ({ ...p, price: Number(e.target.value) }))} className="mt-1" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Features (one per line)</Label>
+              <Textarea value={planForm.features} onChange={e => setPlanForm(p => ({ ...p, features: e.target.value }))} className="mt-1" rows={4} placeholder={"AI Website Generation\nAll Themes\nUnlimited Websites"} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Sort Order</Label>
+                <Input type="number" value={planForm.sort_order} onChange={e => setPlanForm(p => ({ ...p, sort_order: Number(e.target.value) }))} className="mt-1" />
+              </div>
+              <div className="flex items-end gap-2 pb-1">
+                <Switch checked={planForm.is_active} onCheckedChange={v => setPlanForm(p => ({ ...p, is_active: v }))} />
+                <Label className="text-xs text-muted-foreground">{planForm.is_active ? "Active" : "Inactive"}</Label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditingPlan(null)}>Cancel</Button>
+              <Button className="gradient-bg border-0 text-primary-foreground" onClick={handleSavePlan}>
+                {editingPlan === "new" ? "Create" : "Save Changes"}
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -437,23 +576,23 @@ export default function AdminPage() {
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Bio</Label>
-                <Textarea value={devSettings.bio} onChange={(e) => setDevSettings((p) => ({ ...p, bio: e.target.value }))} className="mt-1" rows={3} />
+                <Textarea value={devSettings.bio || ""} onChange={(e) => setDevSettings((p) => ({ ...p, bio: e.target.value }))} className="mt-1" rows={3} />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Email</Label>
-                <Input value={devSettings.email} onChange={(e) => setDevSettings((p) => ({ ...p, email: e.target.value }))} className="mt-1" placeholder="developer@example.com" />
+                <Input value={devSettings.email || ""} onChange={(e) => setDevSettings((p) => ({ ...p, email: e.target.value }))} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Website URL</Label>
-                <Input value={devSettings.website_url} onChange={(e) => setDevSettings((p) => ({ ...p, website_url: e.target.value }))} className="mt-1" placeholder="https://yoursite.com" />
+                <Input value={devSettings.website_url || ""} onChange={(e) => setDevSettings((p) => ({ ...p, website_url: e.target.value }))} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">GitHub URL</Label>
-                <Input value={devSettings.github_url} onChange={(e) => setDevSettings((p) => ({ ...p, github_url: e.target.value }))} className="mt-1" placeholder="https://github.com/username" />
+                <Input value={devSettings.github_url || ""} onChange={(e) => setDevSettings((p) => ({ ...p, github_url: e.target.value }))} className="mt-1" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Twitter/X URL</Label>
-                <Input value={devSettings.twitter_url} onChange={(e) => setDevSettings((p) => ({ ...p, twitter_url: e.target.value }))} className="mt-1" placeholder="https://x.com/username" />
+                <Input value={devSettings.twitter_url || ""} onChange={(e) => setDevSettings((p) => ({ ...p, twitter_url: e.target.value }))} className="mt-1" />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
