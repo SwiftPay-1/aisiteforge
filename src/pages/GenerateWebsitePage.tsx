@@ -489,6 +489,35 @@ export default function GenerateWebsitePage() {
                     )
                   ))}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                  {/* Inline action buttons & mini preview after generation success */}
+                  {msg.role === "assistant" && msg.content.includes("generated successfully") && generated && (
+                    <div className="mt-3 space-y-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setViewMode("preview"); setShowSidebar(false); }}>
+                          <Eye className="h-3 w-3 mr-1" /> Preview
+                        </Button>
+                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setViewMode("code"); setShowSidebar(false); }}>
+                          <Code className="h-3 w-3 mr-1" /> Code
+                        </Button>
+                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleDownloadZip}>
+                          <Download className="h-3 w-3 mr-1" /> ZIP
+                        </Button>
+                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                          <ExternalLink className="h-3 w-3 mr-1" /> Open
+                        </Button>
+                      </div>
+                      <div className="rounded-lg border border-border overflow-hidden bg-white">
+                        <iframe
+                          srcDoc={getFullHTML()}
+                          className="w-full h-40 pointer-events-none"
+                          sandbox="allow-scripts"
+                          title="Mini Preview"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <span className="text-[10px] opacity-50 mt-1 block">
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
