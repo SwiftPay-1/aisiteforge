@@ -58,22 +58,51 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an elite website developer. Build a stunning, complete, professional website.
+    const systemPrompt = `You are a world-class web developer building PRODUCTION-READY, FULLY COMPLETE websites that look like they were built by a top agency.
 
-RULES:
+OUTPUT FORMAT:
 - HTML = inner body HTML only. NEVER include <!DOCTYPE>, <html>, <head>, <body> tags.
-- CSS = complete CSS with @import for Google Fonts and Font Awesome 6 CDN.
-- JS = complete JavaScript for smooth scroll, mobile menu, animations.
-- Use https://placehold.co/ for images.
-- Use Font Awesome 6: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
-- 4-5 sections: Nav, Hero, About/Features, Contact, Footer.
-- Responsive design with flexbox/grid, CSS custom properties.
+- CSS = complete CSS starting with @import for Google Fonts (pick 2 complementary fonts) and Font Awesome 6 CDN: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
+- JS = complete JavaScript for all interactivity.
 - ALL HTML tags MUST be properly closed.
-- Quality over quantity. Professional and polished.`;
 
-    const userPrompt = `Build a professional ${theme} website for "${businessName}" (${category}).
-Description: ${description}
-Make it polished with 4-5 sections.`;
+DESIGN REQUIREMENTS - THIS IS CRITICAL:
+1. HERO SECTION: Full-viewport hero with gradient/image background, large compelling headline, subtitle, and 1-2 CTA buttons. Must feel premium.
+2. NAVIGATION: Sticky/fixed nav with logo, menu links, and a CTA button. Must include working mobile hamburger menu.
+3. ABOUT/STORY SECTION: Two-column layout with image and text. Include statistics/counters (e.g., "500+ Clients", "10 Years Experience").
+4. SERVICES/FEATURES: Grid of 4-6 cards with icons (Font Awesome), titles, and descriptions. Each card should have hover effects.
+5. PORTFOLIO/GALLERY: Grid of 4-6 items with overlay hover effects showing titles.
+6. TESTIMONIALS: 3 testimonial cards with avatar, quote, name, and star ratings.
+7. CONTACT SECTION: Split layout - contact info (address, phone, email, hours, social links) on one side, contact form on the other.
+8. FOOTER: Multi-column footer with links, social icons, newsletter signup, and copyright.
+
+CSS QUALITY REQUIREMENTS:
+- Use CSS custom properties (--primary-color, --secondary-color, --accent-color, --text-color, --bg-color, etc.)
+- Smooth transitions on ALL interactive elements (0.3s ease)
+- Box shadows for depth and elevation on cards
+- Gradient backgrounds where appropriate
+- Responsive breakpoints: 1200px, 992px, 768px, 576px
+- Use flexbox AND grid appropriately
+- Scroll-triggered fade-in animations
+- Professional spacing: generous padding (60-100px vertical sections)
+- Typography hierarchy: distinct sizes for h1 (3-4rem), h2 (2-2.5rem), h3 (1.3-1.5rem), body (1rem-1.1rem)
+
+JS REQUIREMENTS:
+- Smooth scroll for anchor links
+- Mobile hamburger menu toggle with animation
+- Scroll-triggered fade-in animations using IntersectionObserver
+- Sticky navbar background change on scroll
+- Form validation with user feedback
+- Back-to-top button
+
+IMAGE PLACEHOLDERS: Use https://placehold.co/ with meaningful dimensions (e.g., 800x500 for hero, 400x300 for cards, 80x80 for avatars).
+
+The website MUST look like a real, production website - NOT a template or demo. Every section must have real-looking content, proper spacing, and professional polish.`;
+
+    const userPrompt = `Build a COMPLETE, PRODUCTION-READY ${theme} website for "${businessName}" (${category}).
+Business description: ${description}
+
+Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, testimonials, contact, footer) with realistic content tailored to this specific business. Make it look like a $5000+ agency-built website. Use colors and styling that match the "${theme}" theme perfectly.`;
 
     // Use tool calling to FORCE structured JSON output
     const tools = [
@@ -81,21 +110,21 @@ Make it polished with 4-5 sections.`;
         type: "function",
         function: {
           name: "create_website",
-          description: "Create a complete website with HTML, CSS, and JavaScript",
+          description: "Create a complete, production-ready website with all 8 sections",
           parameters: {
             type: "object",
             properties: {
               html: {
                 type: "string",
-                description: "Complete inner body HTML (no DOCTYPE/html/head/body wrapper tags). Must include all sections."
+                description: "Complete inner body HTML with ALL 8 sections (nav, hero, about, services, portfolio, testimonials, contact, footer). No DOCTYPE/html/head/body wrapper tags. Must be extensive and production-ready."
               },
               css: {
                 type: "string",
-                description: "Complete CSS including @import for fonts and icon libraries. Include all styles."
+                description: "Complete CSS with @import for Google Fonts and Font Awesome 6. Include CSS custom properties, responsive breakpoints (1200px, 992px, 768px, 576px), hover effects, transitions, animations, box-shadows, gradients. Must be 300+ lines."
               },
               js: {
                 type: "string",
-                description: "Complete JavaScript for interactivity: smooth scroll, mobile menu toggle, animations."
+                description: "Complete JavaScript: smooth scroll, mobile hamburger menu, IntersectionObserver animations, sticky navbar scroll effect, form validation, back-to-top button."
               },
               sections: {
                 type: "array",
@@ -126,15 +155,15 @@ Make it polished with 4-5 sections.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "openai/gpt-5",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         tools,
         tool_choice: { type: "function", function: { name: "create_website" } },
-        temperature: 0.7,
-        max_tokens: 64000,
+        temperature: 0.8,
+        max_tokens: 100000,
       }),
     });
 
