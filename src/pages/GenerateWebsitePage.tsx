@@ -70,11 +70,9 @@ export default function GenerateWebsitePage() {
     setAiStatus("Connecting to AI...");
 
     try {
+      const { supabase } = await import("@/integrations/supabase/client");
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      
-      // Get the session token
-      const { default: { supabase } } = await import("@/integrations/supabase/client");
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
