@@ -27,6 +27,81 @@ const thinkingSteps = [
   { icon: Code, text: "Adding JavaScript interactivity..." },
 ];
 
+/** Robust JSON parser that handles markdown fences, truncation, and malformed output */
+function cleanAndParseAIOutput(raw: string): GeneratedWebsite {
+  // Strip markdown fences
+  let cleaned = raw
+    .replace(/^```(?:json)?\s*/gim, "")
+    .replace(/```\s*$/gim, "")
+    .trim();
+
+  // Find outermost JSON object
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1) {
+    return { html: raw, css: "", js: "", sections: [] };
+  }
+
+  if (lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  } else {
+    cleaned = cleaned.substring(firstBrace);
+    cleaned = repairTruncatedJSON(cleaned);
+  }
+
+  // Remove control characters
+  cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  // Fix trailing commas
+  cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
+
+  try {
+    const obj = JSON.parse(cleaned);
+    return {
+      html: obj.html || "",
+      css: obj.css || "",
+      js: obj.js || "",
+      sections: obj.sections || [],
+    };
+  } catch {
+    // Try repair
+    try {
+      const repaired = repairTruncatedJSON(cleaned);
+      const obj = JSON.parse(repaired);
+      return {
+        html: obj.html || "",
+        css: obj.css || "",
+        js: obj.js || "",
+        sections: obj.sections || [],
+      };
+    } catch {
+      return { html: raw, css: "", js: "", sections: [] };
+    }
+  }
+}
+
+function repairTruncatedJSON(json: string): string {
+  let result = json.replace(/,\s*$/, "");
+  let inString = false;
+  let escape = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+
+  if (inString) result += '"';
+  while (stack.length > 0) result += stack.pop();
+  return result;
+}
+
 export default function GenerateWebsitePage() {
   const { user } = useAuth();
   const [businessName, setBusinessName] = useState("");
