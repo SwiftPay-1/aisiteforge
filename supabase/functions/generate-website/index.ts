@@ -163,7 +163,7 @@ Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, t
         tools,
         tool_choice: { type: "function", function: { name: "create_website" } },
         temperature: 0.8,
-        max_tokens: 100000,
+        max_completion_tokens: 100000,
       }),
     });
 
