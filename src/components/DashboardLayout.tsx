@@ -63,12 +63,16 @@ export default function DashboardLayout() {
 
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card/80 backdrop-blur-sm hidden md:flex flex-col relative z-10">
-        <Link to="/" className="flex items-center gap-2 p-4 border-b border-border">
-          <div className="gradient-bg rounded-lg p-1.5">
-            <Zap className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold">SiteForge AI</span>
-        </Link>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <Link to="/" className="flex items-center gap-2">
+            <div className="gradient-bg rounded-lg p-1.5">
+              <Zap className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <span className="font-display font-bold">SiteForge AI</span>
+            {plan === "pro" && <ProBadge />}
+          </Link>
+          <NotificationBell />
+        </div>
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => (
             <Link
