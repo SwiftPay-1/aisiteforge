@@ -1,24 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { motion } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import JSZip from "jszip";
-
-const themes = ["modern", "minimal", "startup", "dark"];
-const categories = ["Technology", "Restaurant", "E-commerce", "Portfolio", "Agency", "Healthcare", "Education", "Real Estate"];
 
 interface GeneratedWebsite {
   html: string;
   css: string;
   js: string;
   sections: Array<{ type: string; title: string; content: string }>;
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: Date;
+  attachments?: string[];
 }
 
 const generationSteps = [
@@ -28,6 +31,19 @@ const generationSteps = [
   { id: "css", label: "Crafting CSS styles", icon: Sparkles },
   { id: "js", label: "Adding JavaScript", icon: Code },
   { id: "save", label: "Saving website", icon: CheckCircle2 },
+];
+
+const quickEdits = [
+  "Make it dark mode",
+  "Add animations",
+  "Change colors to blue",
+  "Add testimonials section",
+  "Make text larger",
+  "Add a gallery",
+  "Add pricing section",
+  "Add backend with Python Flask",
+  "Add MySQL database setup",
+  "Add contact form with PHP",
 ];
 
 function cleanAndParseAIOutput(raw: string): GeneratedWebsite {
@@ -77,35 +93,95 @@ function repairTruncatedJSON(json: string): string {
 
 export default function GenerateWebsitePage() {
   const { user } = useAuth();
-  const [businessName, setBusinessName] = useState("");
-  const [category, setCategory] = useState("");
-  const [description, setDescription] = useState("");
-  const [theme, setTheme] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<GeneratedWebsite | null>(null);
   const [currentStep, setCurrentStep] = useState(-1);
   const [progress, setProgress] = useState(0);
-  const [editPrompt, setEditPrompt] = useState("");
   const [editing, setEditing] = useState(false);
   const [websiteId, setWebsiteId] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
+  const [activeCodeTab, setActiveCodeTab] = useState("html");
+  const [editableHtml, setEditableHtml] = useState("");
+  const [editableCss, setEditableCss] = useState("");
+  const [editableJs, setEditableJs] = useState("");
+  const [previewDevice, setPreviewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const [showSidebar, setShowSidebar] = useState(true);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!generating) return;
     const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 95) return prev;
-        return prev + Math.random() * 3 + 0.5;
-      });
+      setProgress((prev) => prev >= 95 ? prev : prev + Math.random() * 3 + 0.5);
     }, 500);
     return () => clearInterval(interval);
   }, [generating]);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!businessName || !category || !description || !theme) {
-      toast.error("Please fill all fields");
-      return;
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  useEffect(() => {
+    if (generated) {
+      setEditableHtml(generated.html);
+      setEditableCss(generated.css);
+      setEditableJs(generated.js);
     }
+  }, [generated]);
+
+  const addChatMessage = (role: ChatMessage["role"], content: string, attachments?: string[]) => {
+    setChatHistory(prev => [...prev, {
+      id: crypto.randomUUID(),
+      role,
+      content,
+      timestamp: new Date(),
+      attachments,
+    }]);
+  };
+
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newAttachments: string[] = [];
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          newAttachments.push(reader.result as string);
+          setAttachments(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setAttachments(prev => [...prev, `[File: ${file.name}]`]);
+        };
+        reader.readAsText(file);
+      }
+    });
+    e.target.value = "";
+  };
+
+  const handleSend = async () => {
+    if (!prompt.trim() && attachments.length === 0) return;
+    const userMessage = prompt.trim();
+    const userAttachments = [...attachments];
+    setPrompt("");
+    setAttachments([]);
+
+    addChatMessage("user", userMessage, userAttachments);
+
+    if (!generated) {
+      await handleGenerate(userMessage);
+    } else {
+      await handleEditWithPrompt(userMessage);
+    }
+  };
+
+  const handleGenerate = async (userPrompt: string) => {
     setGenerating(true);
     setGenerated(null);
     setCurrentStep(0);
@@ -122,6 +198,7 @@ export default function GenerateWebsitePage() {
       setCurrentStep(1);
       setProgress(10);
 
+      // Extract details from the prompt
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
         headers: {
@@ -129,7 +206,13 @@ export default function GenerateWebsitePage() {
           "apikey": supabaseKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ businessName, category, description, theme, stream: true }),
+        body: JSON.stringify({
+          businessName: userPrompt.split(" ").slice(0, 3).join(" "),
+          category: "General",
+          description: userPrompt,
+          theme: "modern",
+          stream: true,
+        }),
       });
 
       if (!response.ok) {
@@ -174,7 +257,6 @@ export default function GenerateWebsitePage() {
       setGenerated(parsed);
       setProgress(100);
 
-      // Fetch the latest website ID for this user
       const { data: latestSite } = await supabase
         .from("websites")
         .select("id")
@@ -184,17 +266,19 @@ export default function GenerateWebsitePage() {
         .single();
       if (latestSite) setWebsiteId(latestSite.id);
 
-      toast.success("Website generated successfully! 🎉");
+      addChatMessage("assistant", "✅ Website generated successfully! You can now preview it, edit the code, or describe more changes.");
+      toast.success("Website generated! 🎉");
     } catch (err: any) {
       console.error("Generation error:", err);
+      addChatMessage("assistant", `❌ Error: ${err.message}`);
       toast.error(err.message || "Failed to generate website");
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleEditWithPrompt = async () => {
-    if (!editPrompt.trim() || !generated) return;
+  const handleEditWithPrompt = async (userPrompt: string) => {
+    if (!generated) return;
     setEditing(true);
 
     try {
@@ -213,10 +297,10 @@ export default function GenerateWebsitePage() {
         },
         body: JSON.stringify({
           websiteId,
-          prompt: editPrompt,
-          currentHtml: generated.html,
-          currentCss: generated.css,
-          currentJs: generated.js,
+          prompt: userPrompt,
+          currentHtml: editableHtml,
+          currentCss: editableCss,
+          currentJs: editableJs,
         }),
       });
 
@@ -233,11 +317,12 @@ export default function GenerateWebsitePage() {
           js: result.updated.js,
           sections: generated.sections,
         });
-        setEditPrompt("");
+        addChatMessage("assistant", "✅ Changes applied successfully! Check the preview.");
         toast.success("Website updated! ✨");
       }
     } catch (err: any) {
       console.error("Edit error:", err);
+      addChatMessage("assistant", `❌ Error: ${err.message}`);
       toast.error(err.message || "Failed to edit website");
     } finally {
       setEditing(false);
@@ -246,52 +331,26 @@ export default function GenerateWebsitePage() {
 
   const getFullHTML = () => {
     if (!generated) return "";
-    const html = generated.html || "";
+    const html = editableHtml || "";
+    const css = editableCss || "";
+    const js = editableJs || "";
     if (html.trim().toLowerCase().startsWith("<!doctype") || html.trim().toLowerCase().startsWith("<html")) {
       let full = html;
-      if (generated.css && !html.includes(generated.css.substring(0, 50))) {
-        full = full.replace(/<\/head>/i, `<style>${generated.css}</style></head>`);
-      }
-      if (generated.js && !html.includes(generated.js.substring(0, 50))) {
-        full = full.replace(/<\/body>/i, `<script>${generated.js}<\/script></body>`);
-      }
+      if (css && !html.includes(css.substring(0, 50))) full = full.replace(/<\/head>/i, `<style>${css}</style></head>`);
+      if (js && !html.includes(js.substring(0, 50))) full = full.replace(/<\/body>/i, `<script>${js}<\/script></body>`);
       return full;
     }
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${businessName}</title>
-  <style>${generated.css || ""}</style>
-</head>
-<body>
-${html}
-<script>${generated.js || ""}<\/script>
-</body>
-</html>`;
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Preview</title><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`;
   };
 
   const handleDownloadZip = async () => {
     if (!generated) return;
     const zip = new JSZip();
-    const slug = businessName.toLowerCase().replace(/\s+/g, "-");
-    const indexHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${businessName}</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-${generated.html || ""}
-<script src="script.js"><\/script>
-</body>
-</html>`;
+    const slug = "website";
+    const indexHtml = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Website</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n${editableHtml || ""}\n<script src="script.js"><\/script>\n</body>\n</html>`;
     zip.file("index.html", indexHtml);
-    zip.file("style.css", generated.css || "/* No styles */");
-    zip.file("script.js", generated.js || "// No scripts");
+    zip.file("style.css", editableCss || "/* No styles */");
+    zip.file("script.js", editableJs || "// No scripts");
     const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -302,286 +361,351 @@ ${generated.html || ""}
     toast.success("Zip downloaded!");
   };
 
-  const handlePreviewInNewTab = () => {
-    const html = getFullHTML();
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-  };
-
   const handleStartOver = () => {
     setGenerated(null);
     setWebsiteId(null);
-    setEditPrompt("");
     setCurrentStep(-1);
     setProgress(0);
+    setChatHistory([]);
+    setViewMode("preview");
+    setEditableHtml("");
+    setEditableCss("");
+    setEditableJs("");
   };
 
+  const previewWidth = previewDevice === "mobile" ? "375px" : previewDevice === "tablet" ? "768px" : "100%";
+
   return (
-    <div className="max-w-6xl mx-auto relative">
-      <div className="absolute -top-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="p-2 rounded-xl gradient-bg">
-            <Sparkles className="h-5 w-5 text-primary-foreground" />
+    <div className="h-[calc(100vh-6rem)] flex flex-col relative -m-4 md:-m-8">
+      {/* Top toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/80 backdrop-blur-sm z-10">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowSidebar(!showSidebar)} className="md:hidden">
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg gradient-bg">
+              <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
+            </div>
+            <span className="font-display font-bold text-sm">AI Website Builder</span>
           </div>
-          <h1 className="font-display text-3xl font-bold">AI Website Generator</h1>
         </div>
-        <p className="text-muted-foreground mb-8 ml-12">
-          Describe your business and AI will build a complete website.
-        </p>
-      </motion.div>
+        
+        {generated && (
+          <div className="flex items-center gap-1">
+            {/* View mode toggle */}
+            <div className="flex items-center bg-muted rounded-lg p-0.5 mr-2">
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              >
+                <Eye className="h-3 w-3 inline mr-1" />Preview
+              </button>
+              <button
+                onClick={() => setViewMode("code")}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              >
+                <Code className="h-3 w-3 inline mr-1" />Code
+              </button>
+            </div>
 
-      <div className="grid lg:grid-cols-5 gap-6 relative">
-        {/* Form - 2 cols */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="lg:col-span-2 space-y-4 h-fit"
-        >
-          {!generated ? (
-            <form onSubmit={handleGenerate} className="space-y-4 p-5 rounded-2xl bg-card border border-border card-shadow">
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Business Name</Label>
-                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. TechFlow" className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Category</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</Label>
-                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of your business..." rows={3} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Theme Style</Label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {themes.map((t) => (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => setTheme(t)}
-                      className={`p-2.5 rounded-lg border text-sm font-medium capitalize transition-all ${
-                        theme === t
-                          ? "border-primary bg-primary/10 text-primary shadow-sm"
-                          : "border-border hover:border-primary/30 text-muted-foreground"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Button type="submit" className="w-full gradient-bg border-0 text-primary-foreground" disabled={generating}>
-                {generating ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
-                ) : (
-                  <><Wand2 className="h-4 w-4 mr-2" /> Generate Website</>
-                )}
-              </Button>
-            </form>
-          ) : (
-            /* Edit with prompt panel */
-            <div className="space-y-4 p-5 rounded-2xl bg-card border border-border card-shadow">
-              <div className="flex items-center justify-between">
-                <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-                  <Wand2 className="h-4 w-4 text-primary" />
-                  Edit with AI
-                </h3>
-                <Button size="sm" variant="ghost" onClick={handleStartOver} className="text-xs text-muted-foreground">
-                  <RotateCcw className="h-3 w-3 mr-1" /> New Website
+            {/* Device toggle */}
+            {viewMode === "preview" && (
+              <div className="flex items-center gap-0.5 mr-2">
+                <Button variant={previewDevice === "desktop" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => setPreviewDevice("desktop")}>
+                  <Monitor className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant={previewDevice === "tablet" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => setPreviewDevice("tablet")}>
+                  <Tablet className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant={previewDevice === "mobile" ? "secondary" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => setPreviewDevice("mobile")}>
+                  <Smartphone className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Don't like something? Describe what to change and AI will update it.
-              </p>
-              <Textarea
-                value={editPrompt}
-                onChange={(e) => setEditPrompt(e.target.value)}
-                placeholder="e.g. Change the color scheme to blue, add a testimonials section, make the hero text bigger..."
-                rows={4}
-                className="text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleEditWithPrompt();
-                  }
-                }}
-              />
-              <Button
-                onClick={handleEditWithPrompt}
-                className="w-full gradient-bg border-0 text-primary-foreground"
-                disabled={editing || !editPrompt.trim()}
-              >
-                {editing ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Editing...</>
-                ) : (
-                  <><Send className="h-4 w-4 mr-2" /> Apply Changes</>
-                )}
-              </Button>
+            )}
 
-              <div className="border-t border-border pt-3 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick edits</p>
-                <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleDownloadZip}>
+              <Download className="h-3 w-3 mr-1" /> ZIP
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+              <ExternalLink className="h-3 w-3 mr-1" /> Open
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
+              <RotateCcw className="h-3 w-3 mr-1" /> New
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Chat sidebar */}
+        <div className={`${showSidebar ? "flex" : "hidden"} md:flex flex-col w-full md:w-80 lg:w-96 border-r border-border bg-card/50 backdrop-blur-sm flex-shrink-0`}>
+          {/* Chat messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {chatHistory.length === 0 && !generating && (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl gradient-bg flex items-center justify-center">
+                  <Wand2 className="h-8 w-8 text-primary-foreground" />
+                </div>
+                <h3 className="font-display font-semibold text-lg mb-2">Build anything with AI</h3>
+                <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto">
+                  Describe the website you want to create. Include details about design, features, and content.
+                </p>
+                <div className="space-y-2 text-left max-w-xs mx-auto">
                   {[
-                    "Make it dark mode",
-                    "Add animations",
-                    "Change colors to blue",
-                    "Add testimonials section",
-                    "Make text larger",
-                    "Add a gallery",
+                    "Build a portfolio website for a photographer with dark theme",
+                    "Create a restaurant website with menu and reservation form",
+                    "Make an e-commerce landing page for a tech startup",
                   ].map((suggestion) => (
                     <button
                       key={suggestion}
-                      onClick={() => setEditPrompt(suggestion)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/30 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
+                      onClick={() => setPrompt(suggestion)}
+                      className="w-full text-left text-xs p-3 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
                     >
                       {suggestion}
                     </button>
                   ))}
                 </div>
               </div>
+            )}
+
+            {chatHistory.map((msg) => (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : "bg-muted text-foreground rounded-bl-md"
+                }`}>
+                  {msg.attachments?.map((att, i) => (
+                    att.startsWith("data:image") ? (
+                      <img key={i} src={att} alt="attachment" className="max-w-full rounded-lg mb-2 max-h-32 object-cover" />
+                    ) : (
+                      <span key={i} className="text-xs opacity-70 block mb-1">{att}</span>
+                    )
+                  ))}
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <span className="text-[10px] opacity-50 mt-1 block">
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </motion.div>
+            ))}
+
+            {/* Generation progress */}
+            {generating && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-muted rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                  <span className="text-sm font-medium">Generating website...</span>
+                </div>
+                <Progress value={progress} className="h-1.5 mb-3" />
+                <div className="space-y-1.5">
+                  {generationSteps.map((step, i) => {
+                    const isActive = i === currentStep;
+                    const isDone = i < currentStep;
+                    if (!isDone && !isActive) return null;
+                    return (
+                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                        {isDone ? <CheckCircle2 className="h-3 w-3 text-accent" /> : <Loader2 className="h-3 w-3 text-primary animate-spin" />}
+                        <span className={isDone ? "text-muted-foreground" : "text-foreground font-medium"}>{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {editing && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-muted rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%]">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                  <span className="text-sm font-medium">Applying changes...</span>
+                </div>
+              </motion.div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick edits */}
+          {generated && !generating && !editing && (
+            <div className="px-4 py-2 border-t border-border">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Quick edits</p>
+              <div className="flex flex-wrap gap-1">
+                {quickEdits.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => setPrompt(suggestion)}
+                    className="text-[10px] px-2 py-1 rounded-full border border-border hover:border-primary/30 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </motion.div>
 
-        {/* Result area - 3 cols */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="lg:col-span-3"
-        >
-          {generating || editing ? (
-            <div className="rounded-2xl border border-border bg-card card-shadow p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="relative">
-                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                  <div className="absolute -inset-1 bg-primary/20 rounded-full animate-ping opacity-30" />
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold">
-                    {editing ? "Applying your changes..." : "Generating your website..."}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {editing ? `Editing: "${editPrompt.slice(0, 50)}${editPrompt.length > 50 ? '...' : ''}"` : `AI is building ${businessName}`}
-                  </p>
-                </div>
+          {/* Input area */}
+          <div className="p-3 border-t border-border bg-card">
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachments.map((att, i) => (
+                  <div key={i} className="relative group">
+                    {att.startsWith("data:image") ? (
+                      <img src={att} alt="" className="h-12 w-12 rounded-lg object-cover border border-border" />
+                    ) : (
+                      <div className="h-12 px-3 rounded-lg border border-border bg-muted flex items-center text-xs text-muted-foreground">{att}</div>
+                    )}
+                    <button onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-
-              {!editing && (
-                <>
-                  <Progress value={progress} className="h-2 mb-6" />
-                  <div className="space-y-3">
-                    {generationSteps.map((step, i) => {
-                      const StepIcon = step.icon;
-                      const isActive = i === currentStep;
-                      const isDone = i < currentStep;
-                      return (
-                        <motion.div
-                          key={step.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                            isActive ? "bg-primary/10 border border-primary/20" : isDone ? "bg-accent/5" : "opacity-40"
-                          }`}
-                        >
-                          {isDone ? (
-                            <CheckCircle2 className="h-5 w-5 text-accent flex-shrink-0" />
-                          ) : isActive ? (
-                            <Loader2 className="h-5 w-5 text-primary animate-spin flex-shrink-0" />
-                          ) : (
-                            <Circle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                          )}
-                          <span className={`text-sm font-medium ${isActive ? "text-primary" : isDone ? "text-foreground" : "text-muted-foreground"}`}>
-                            {step.label}
-                          </span>
-                          {isDone && <span className="ml-auto text-xs text-accent font-medium">Done</span>}
-                          {isActive && (
-                            <div className="ml-auto flex gap-1">
-                              {[0, 1, 2].map((d) => (
-                                <div key={d} className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
-                              ))}
-                            </div>
-                          )}
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-              {editing && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <div className="relative mx-auto w-16 h-16 mb-4">
-                      <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
-                      <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">AI is editing your website...</p>
-                    <p className="text-xs text-muted-foreground mt-1">This usually takes 10-20 seconds</p>
-                  </div>
-                </div>
-              )}
-
-              {!editing && (
-                <p className="text-xs text-muted-foreground text-center mt-6">
-                  This usually takes 15-30 seconds
-                </p>
-              )}
+            )}
+            <div className="flex items-end gap-2">
+              <div className="flex-1 relative">
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={generated ? "Describe changes you want..." : "Describe the website you want to build..."}
+                  rows={2}
+                  className="text-sm resize-none pr-10 min-h-[60px]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute right-2 bottom-2 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+                <input ref={fileInputRef} type="file" multiple accept="image/*,.html,.css,.js,.py,.c,.cpp,.sql,.txt,.json" className="hidden" onChange={handleFileAttach} />
+              </div>
+              <Button
+                onClick={handleSend}
+                disabled={generating || editing || (!prompt.trim() && attachments.length === 0)}
+                className="gradient-bg border-0 text-primary-foreground h-[60px] w-[60px] p-0 rounded-xl"
+              >
+                {generating || editing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              </Button>
             </div>
-          ) : generated ? (
-            <div className="rounded-2xl border border-border overflow-hidden bg-card card-shadow">
-              <div className="flex items-center justify-between px-4 py-3 bg-muted border-b border-border">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-destructive/60" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
-                    <div className="w-3 h-3 rounded-full bg-accent/60" />
-                  </div>
-                  <span className="text-xs text-muted-foreground ml-2">{businessName || "website"}.html</span>
+          </div>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex-1 flex flex-col min-h-0 bg-muted/30">
+          {!generated && !generating ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-muted-foreground px-6">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl border-2 border-dashed border-border flex items-center justify-center">
+                  <Wand2 className="h-8 w-8 opacity-30" />
                 </div>
-                <div className="flex items-center gap-1">
-                  <CheckCircle2 className="h-4 w-4 text-accent mr-1" />
-                  <span className="text-xs text-accent font-medium">Generated</span>
-                </div>
+                <p className="font-display font-semibold text-lg">Your website will appear here</p>
+                <p className="text-sm mt-1">Start by describing what you want to build</p>
               </div>
-
-              <iframe
-                srcDoc={getFullHTML()}
-                className="w-full h-[500px] bg-white"
-                sandbox="allow-scripts"
-                title="Website Preview"
-              />
-
-              <div className="flex gap-2 p-3 border-t border-border bg-muted/50">
-                <Button size="sm" variant="outline" onClick={handleDownloadZip}>
-                  <Download className="h-3 w-3 mr-1" /> Download ZIP
-                </Button>
-                <Button size="sm" variant="outline" onClick={handlePreviewInNewTab}>
-                  <ExternalLink className="h-3 w-3 mr-1" /> Full Preview
-                </Button>
+            </div>
+          ) : generating ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="relative mx-auto w-20 h-20 mb-4">
+                  <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+                  <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                  <div className="absolute inset-3 rounded-full gradient-bg flex items-center justify-center">
+                    <Sparkles className="h-6 w-6 text-primary-foreground" />
+                  </div>
+                </div>
+                <p className="font-display font-semibold">Building your website...</p>
+                <p className="text-sm text-muted-foreground mt-1">{Math.round(progress)}% complete</p>
+              </div>
+            </div>
+          ) : viewMode === "preview" ? (
+            <div className="flex-1 flex items-start justify-center p-4 overflow-auto">
+              <div className="transition-all duration-300" style={{ width: previewWidth, maxWidth: "100%" }}>
+                <div className="rounded-xl border border-border overflow-hidden bg-white shadow-lg">
+                  <div className="px-3 py-2 bg-muted border-b border-border flex items-center gap-2">
+                    <div className="flex gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-destructive/60" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-accent/60" />
+                    </div>
+                    <div className="flex-1 mx-8">
+                      <div className="bg-background rounded-md px-3 py-1 text-xs text-muted-foreground text-center truncate">
+                        website-preview.local
+                      </div>
+                    </div>
+                  </div>
+                  <iframe
+                    srcDoc={getFullHTML()}
+                    className="w-full bg-white"
+                    style={{ height: "calc(100vh - 12rem)" }}
+                    sandbox="allow-scripts"
+                    title="Website Preview"
+                  />
+                </div>
               </div>
             </div>
           ) : (
-            <div className="h-full min-h-[400px] rounded-2xl border-2 border-dashed border-border flex items-center justify-center bg-card/50">
-              <div className="text-center text-muted-foreground px-6">
-                <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">Your website preview will appear here</p>
-                <p className="text-sm">Fill the form and click generate</p>
-              </div>
+            /* Code view */
+            <div className="flex-1 flex flex-col min-h-0">
+              <Tabs value={activeCodeTab} onValueChange={setActiveCodeTab} className="flex flex-col flex-1 min-h-0">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
+                  <TabsList className="bg-muted h-8">
+                    <TabsTrigger value="html" className="text-xs h-6 px-3 gap-1">
+                      <FileCode className="h-3 w-3" /> index.html
+                    </TabsTrigger>
+                    <TabsTrigger value="css" className="text-xs h-6 px-3 gap-1">
+                      <Sparkles className="h-3 w-3" /> style.css
+                    </TabsTrigger>
+                    <TabsTrigger value="js" className="text-xs h-6 px-3 gap-1">
+                      <Code className="h-3 w-3" /> script.js
+                    </TabsTrigger>
+                  </TabsList>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                    Editable
+                  </div>
+                </div>
+                <TabsContent value="html" className="flex-1 m-0 min-h-0">
+                  <Textarea
+                    value={editableHtml}
+                    onChange={(e) => setEditableHtml(e.target.value)}
+                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+                <TabsContent value="css" className="flex-1 m-0 min-h-0">
+                  <Textarea
+                    value={editableCss}
+                    onChange={(e) => setEditableCss(e.target.value)}
+                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+                <TabsContent value="js" className="flex-1 m-0 min-h-0">
+                  <Textarea
+                    value={editableJs}
+                    onChange={(e) => setEditableJs(e.target.value)}
+                    className="font-mono text-xs h-full w-full rounded-none border-0 resize-none focus-visible:ring-0 bg-[hsl(var(--card))]"
+                    spellCheck={false}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
     </div>
   );
