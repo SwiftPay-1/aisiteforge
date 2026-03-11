@@ -6,6 +6,89 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Cleans raw LLM output into a valid JSON string.
+ * Handles markdown fences, trailing commas, control chars, and truncation.
+ */
+function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
+  // 1. Strip markdown code fences
+  let cleaned = raw
+    .replace(/^```(?:json)?\s*/gim, "")
+    .replace(/```\s*$/gim, "")
+    .trim();
+
+  // 2. Find the outermost JSON object
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace === -1) return null;
+
+  if (lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  } else {
+    // Truncated – no closing brace. Try to repair.
+    cleaned = cleaned.substring(firstBrace);
+    // Close any open strings and structures
+    cleaned = repairTruncatedJSON(cleaned);
+  }
+
+  // 3. Remove control characters (except normal whitespace)
+  cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+
+  // 4. Fix trailing commas before } or ]
+  cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
+
+  // 5. Try parsing
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Try a more aggressive repair
+    try {
+      return JSON.parse(repairTruncatedJSON(cleaned));
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * Attempts to repair truncated JSON by closing open strings, arrays, objects.
+ */
+function repairTruncatedJSON(json: string): string {
+  let result = json;
+
+  // Remove trailing commas
+  result = result.replace(/,\s*$/, "");
+
+  // Count open/close braces and brackets
+  let inString = false;
+  let escape = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"' && !escape) { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+
+  // If we're still inside a string, close it
+  if (inString) result += '"';
+
+  // Remove any trailing partial key-value (e.g. `"key": "some trunc`)
+  // Already handled by closing the string above
+
+  // Close remaining open structures
+  while (stack.length > 0) {
+    result += stack.pop();
+  }
+
+  return result;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -23,7 +106,7 @@ serve(async (req) => {
     if (authError || !user) throw new Error("Unauthorized");
 
     const today = new Date().toISOString().split("T")[0];
-    
+
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -58,31 +141,30 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const systemPrompt = `You are an expert website builder AI. Generate a complete, modern, responsive single-page website.
-    
-Output format: Return ONLY a valid JSON object (no markdown, no backticks) with these fields:
-- html: ONLY the inner body content (do NOT include <!DOCTYPE>, <html>, <head>, or <body> tags - just the content that goes inside <body>)
-- css: Complete CSS styles (modern, responsive, use CSS variables, animations, gradients). Include any @import for fonts at the top.
-- js: JavaScript for interactivity (smooth scroll, animations, mobile menu toggle)
-- sections: Array of {type, title, content} for preview
+    const systemPrompt = `You are a website builder AI. Generate a single-page website as a JSON object.
 
-Requirements:
-- The website must be fully responsive and mobile-first
-- Use modern CSS (flexbox, grid, custom properties, backdrop-filter)
-- Include smooth animations and transitions
-- Theme style: ${theme}
-- Make it production-ready and visually stunning
-- Include: hero, about, services/features, testimonials, contact, footer sections
-- Use placeholder images from https://placehold.co/
-- Include a navigation bar with smooth scroll links
-- IMPORTANT: Return raw JSON only, no markdown code blocks`;
+CRITICAL RULES:
+1. Return ONLY a raw JSON object. No markdown, no backticks, no explanation.
+2. The JSON must have exactly these 4 keys: "html", "css", "js", "sections"
+3. "html" = ONLY the inner body content. NO <!DOCTYPE>, <html>, <head>, or <body> tags.
+4. "css" = Complete CSS including @import for Google Fonts at the top. Use clean, valid CSS.
+5. "js" = JavaScript for interactivity (mobile menu, smooth scroll, animations).
+6. "sections" = Array of {type, title, content} describing each section.
+7. Keep CSS concise. Use shorthand properties. Avoid redundant rules.
+8. All HTML tags must be properly opened and closed.
+9. All CSS properties must be complete and valid (no truncated values).
+10. Use https://placehold.co/ for placeholder images.
+11. Include: navbar, hero, about, services, contact, footer sections.
+12. Make it responsive with media queries.
+13. Theme: ${theme}
 
-    const userPrompt = `Create a ${theme} themed website for "${businessName}" - a ${category} business.
+IMPORTANT: Keep the total output under 4000 tokens. Be efficient with code. Do NOT add unnecessary comments.`;
+
+    const userPrompt = `Create a ${theme} website for "${businessName}" (${category}).
 Description: ${description}
 
-Generate the complete HTML, CSS, and JS code. Make it visually impressive with the ${theme} style.`;
+Return the JSON now.`;
 
-    // Streaming mode
     if (stream) {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -96,7 +178,8 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0.7,
+          temperature: 0.6,
+          max_tokens: 8000,
           stream: true,
         }),
       });
@@ -109,7 +192,6 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
         });
       }
 
-      // Create a TransformStream that forwards SSE chunks and saves the full content
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
       let fullContent = "";
@@ -121,23 +203,14 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
           controller.enqueue(chunk);
         },
         async flush(controller) {
-          // After stream ends, save to DB
           try {
-            let parsed;
-            try {
-              const jsonMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-              const jsonStr = jsonMatch ? jsonMatch[1].trim() : fullContent.trim();
-              parsed = JSON.parse(jsonStr);
-            } catch {
-              parsed = {
-                html: fullContent,
-                css: "",
-                js: "",
-                sections: [
-                  { type: "hero", title: businessName, content: description },
-                ],
-              };
-            }
+            const parsed = cleanAndParseJSON(fullContent);
+            const websiteData = parsed || {
+              html: fullContent,
+              css: "",
+              js: "",
+              sections: [{ type: "hero", title: businessName, content: description }],
+            };
 
             await adminClient
               .from("websites")
@@ -147,13 +220,12 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
                 category,
                 description,
                 theme,
-                html_content: parsed.html || "",
-                css_content: parsed.css || "",
-                js_content: parsed.js || "",
-                preview_data: parsed.sections || [],
+                html_content: (websiteData.html as string) || "",
+                css_content: (websiteData.css as string) || "",
+                js_content: (websiteData.js as string) || "",
+                preview_data: (websiteData.sections as unknown[]) || [],
               });
 
-            // Update daily usage
             const { data: existingUsage } = await adminClient
               .from("daily_usage")
               .select("id, generation_count")
@@ -202,7 +274,8 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.7,
+        temperature: 0.6,
+        max_tokens: 8000,
       }),
     });
 
@@ -225,22 +298,16 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
     const aiData = await response.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
-    let parsed;
-    try {
-      const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawContent.trim();
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      parsed = {
-        html: rawContent,
-        css: "",
-        js: "",
-        sections: [
-          { type: "hero", title: businessName, content: description },
-          { type: "about", title: "About Us", content: `${businessName} is a leading ${category} company.` },
-        ],
-      };
-    }
+    const parsed = cleanAndParseJSON(rawContent);
+    const websiteData = parsed || {
+      html: rawContent,
+      css: "",
+      js: "",
+      sections: [
+        { type: "hero", title: businessName, content: description },
+        { type: "about", title: "About Us", content: `${businessName} is a leading ${category} company.` },
+      ],
+    };
 
     const { data: website, error: dbError } = await adminClient
       .from("websites")
@@ -250,10 +317,10 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
         category,
         description,
         theme,
-        html_content: parsed.html || "",
-        css_content: parsed.css || "",
-        js_content: parsed.js || "",
-        preview_data: parsed.sections || [],
+        html_content: (websiteData.html as string) || "",
+        css_content: (websiteData.css as string) || "",
+        js_content: (websiteData.js as string) || "",
+        preview_data: (websiteData.sections as unknown[]) || [],
       })
       .select()
       .single();
@@ -263,7 +330,6 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
       throw new Error("Failed to save website");
     }
 
-    // Update daily usage
     const { data: existingUsage } = await adminClient
       .from("daily_usage")
       .select("id, generation_count")
@@ -283,7 +349,7 @@ Generate the complete HTML, CSS, and JS code. Make it visually impressive with t
     }
 
     return new Response(
-      JSON.stringify({ website, generated: parsed }),
+      JSON.stringify({ website, generated: websiteData }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

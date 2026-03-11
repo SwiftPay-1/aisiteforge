@@ -58,18 +58,34 @@ export default function MyWebsitesPage() {
 
   const getFullHTML = (site: Website) => {
     const html = site.html_content || "";
+    const css = site.css_content || "";
+    const js = site.js_content || "";
+
     // If AI returned a complete HTML document, use it directly
     if (html.trim().toLowerCase().startsWith("<!doctype") || html.trim().toLowerCase().startsWith("<html")) {
       let full = html;
-      if (site.css_content && !html.includes(site.css_content.substring(0, 50))) {
-        full = full.replace(/<\/head>/i, `<style>${site.css_content}</style></head>`);
+      if (css && (!html.includes("<style>") || (css.length > 50 && !html.includes(css.substring(0, 50))))) {
+        full = full.replace(/<\/head>/i, `<style>${css}</style></head>`);
       }
-      if (site.js_content && !html.includes(site.js_content.substring(0, 50))) {
-        full = full.replace(/<\/body>/i, `<script>${site.js_content}<\/script></body>`);
+      if (js && (!html.includes("<script>") || (js.length > 50 && !html.includes(js.substring(0, 50))))) {
+        full = full.replace(/<\/body>/i, `<script>${js}<\/script></body>`);
       }
       return full;
     }
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${site.name}</title><style>${site.css_content || ""}</style></head><body>${html}<script>${site.js_content || ""}<\/script></body></html>`;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${site.name}</title>
+  <style>${css}</style>
+</head>
+<body>
+${html}
+<script>${js}<\/script>
+</body>
+</html>`;
   };
 
   const getEditPreviewHTML = () => {
