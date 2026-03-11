@@ -4,15 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useAuth } from "@/contexts/AuthContext";
-import { Zap, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Zap, ArrowRight, ArrowLeft, Check, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 const steps = [
   { title: "Create Account", subtitle: "Enter your credentials" },
   { title: "Personal Info", subtitle: "Tell us about yourself" },
-  { title: "Almost Done!", subtitle: "Final details" },
+  { title: "Verify Email", subtitle: "Enter the code sent to your email" },
 ];
 
 const purposes = ["Business Website", "Portfolio", "E-commerce", "Blog", "Agency", "Other"];
@@ -25,25 +27,26 @@ export default function SignupPage() {
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const { signUp } = useAuth();
   const navigate = useNavigate();
 
   const canNext = () => {
     if (step === 0) return name && email && password.length >= 6;
-    if (step === 1) return true; // optional fields
-    return true;
+    if (step === 1) return true;
+    return false;
   };
 
-  const handleSubmit = async () => {
+  const handleSignUp = async () => {
     setLoading(true);
     try {
       await signUp(email, password, name);
-      toast.success("Account created! Check your email to verify.", {
-        description: "We sent a verification link to " + email,
-        duration: 6000,
+      toast.success("Verification code sent!", {
+        description: "Check your email for the 6-digit code.",
       });
-      navigate("/login");
+      setStep(2);
     } catch (err: any) {
       toast.error(err.message || "Signup failed");
     } finally {
@@ -51,9 +54,44 @@ export default function SignupPage() {
     }
   };
 
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: "signup",
+      });
+      if (error) throw error;
+      toast.success("Email verified! Welcome to SiteForge AI 🎉");
+      navigate("/dashboard");
+    } catch (err: any) {
+      toast.error(err.message || "Invalid code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setResending(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
+      if (error) throw error;
+      toast.success("New code sent to " + email);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to resend");
+    } finally {
+      setResending(false);
+    }
+  };
+
   const handleNext = () => {
-    if (step < 2) setStep(step + 1);
-    else handleSubmit();
+    if (step === 0) setStep(1);
+    else if (step === 1) handleSignUp();
   };
 
   return (
@@ -191,47 +229,46 @@ export default function SignupPage() {
               )}
 
               {step === 2 && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-background/5 border border-border/20 space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Name</span>
-                      <span className="text-primary-foreground font-medium">{name}</span>
+                <div className="space-y-6">
+                  <div className="flex justify-center">
+                    <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Mail className="h-8 w-8 text-primary" />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Email</span>
-                      <span className="text-primary-foreground font-medium">{email}</span>
-                    </div>
-                    {phone && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Phone</span>
-                        <span className="text-primary-foreground font-medium">{phone}</span>
-                      </div>
-                    )}
-                    {company && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Company</span>
-                        <span className="text-primary-foreground font-medium">{company}</span>
-                      </div>
-                    )}
-                    {purpose && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Purpose</span>
-                        <span className="text-primary-foreground font-medium">{purpose}</span>
-                      </div>
-                    )}
                   </div>
-                  <div className="p-4 rounded-xl gradient-bg/10 border border-primary/20">
-                    <p className="text-xs text-muted-foreground text-center">
-                      🎉 You'll start with the <strong className="text-primary-foreground">Free Plan</strong> — 3 AI generations per day. Upgrade anytime for unlimited access!
-                    </p>
+                  <p className="text-center text-sm text-muted-foreground">
+                    We sent a 6-digit code to <strong className="text-primary-foreground">{email}</strong>
+                  </p>
+                  <div className="flex justify-center">
+                    <InputOTP
+                      maxLength={6}
+                      value={otp}
+                      onChange={setOtp}
+                    >
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} className="bg-background/10 border-border/30 text-primary-foreground" />
+                        <InputOTPSlot index={1} className="bg-background/10 border-border/30 text-primary-foreground" />
+                        <InputOTPSlot index={2} className="bg-background/10 border-border/30 text-primary-foreground" />
+                        <InputOTPSlot index={3} className="bg-background/10 border-border/30 text-primary-foreground" />
+                        <InputOTPSlot index={4} className="bg-background/10 border-border/30 text-primary-foreground" />
+                        <InputOTPSlot index={5} className="bg-background/10 border-border/30 text-primary-foreground" />
+                      </InputOTPGroup>
+                    </InputOTP>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={resending}
+                    className="w-full text-center text-sm text-primary hover:underline disabled:opacity-50"
+                  >
+                    {resending ? "Sending..." : "Didn't get the code? Resend"}
+                  </button>
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
 
           <div className="flex gap-3 mt-6">
-            {step > 0 && (
+            {step > 0 && step < 2 && (
               <Button
                 variant="outline"
                 onClick={() => setStep(step - 1)}
@@ -240,17 +277,25 @@ export default function SignupPage() {
                 <ArrowLeft className="h-4 w-4 mr-1" /> Back
               </Button>
             )}
-            <Button
-              onClick={handleNext}
-              className="flex-1 gradient-bg border-0 text-primary-foreground"
-              disabled={!canNext() || loading}
-            >
-              {loading ? "Creating account..." : step < 2 ? (
-                <>Next <ArrowRight className="h-4 w-4 ml-1" /></>
-              ) : (
-                "Create Account"
-              )}
-            </Button>
+            {step < 2 ? (
+              <Button
+                onClick={handleNext}
+                className="flex-1 gradient-bg border-0 text-primary-foreground"
+                disabled={!canNext() || loading}
+              >
+                {loading ? "Creating account..." : (
+                  <>Next <ArrowRight className="h-4 w-4 ml-1" /></>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleVerifyOtp}
+                className="flex-1 gradient-bg border-0 text-primary-foreground"
+                disabled={otp.length !== 6 || loading}
+              >
+                {loading ? "Verifying..." : "Verify & Continue"}
+              </Button>
+            )}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
