@@ -722,6 +722,15 @@ export default function GenerateWebsitePage() {
                     title="Website Preview"
                   />
                 </div>
+                {/* Action buttons below preview */}
+                <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleDownloadZip}>
+                    <Download className="h-3.5 w-3.5" /> Download ZIP
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                    <ExternalLink className="h-3.5 w-3.5" /> Open in New Tab
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
