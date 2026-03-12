@@ -311,8 +311,20 @@ function extractWebsiteData(aiData: any): { html: string; css: string; js: strin
     return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
   }
 
-  // Last resort: treat entire content as HTML
+  // Try extracting HTML/CSS/JS from markdown code blocks
   if (rawContent && rawContent.length > 100) {
+    const htmlMatch = rawContent.match(/```html\s*([\s\S]*?)```/i);
+    const cssMatch = rawContent.match(/```css\s*([\s\S]*?)```/i);
+    const jsMatch = rawContent.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
+    if (htmlMatch || cssMatch || jsMatch) {
+      return {
+        html: htmlMatch?.[1]?.trim() || "",
+        css: cssMatch?.[1]?.trim() || "",
+        js: jsMatch?.[1]?.trim() || "",
+        sections: [],
+      };
+    }
+    // Last resort: treat entire content as HTML
     return { html: rawContent, css: "", js: "", sections: [] };
   }
 
@@ -327,7 +339,25 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   if (lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-  try { return JSON.parse(cleaned); } catch { return null; }
+  try { return JSON.parse(cleaned); } catch { /* try repair */ }
+
+  // Repair truncated JSON
+  let repaired = cleaned.replace(/,\s*$/, "");
+  let inString = false, escape = false;
+  const stack: string[] = [];
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  if (inString) repaired += '"';
+  while (stack.length > 0) repaired += stack.pop();
+  try { return JSON.parse(repaired); } catch { return null; }
 }
 
 function buildSystemPrompt(): string {

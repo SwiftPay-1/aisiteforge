@@ -263,12 +263,18 @@ export default function GenerateWebsitePage() {
 
       const result = await response.json();
       const websiteData = result.generated || result;
-      const parsed: GeneratedWebsite = {
+      let parsed: GeneratedWebsite = {
         html: websiteData.html || "",
         css: websiteData.css || "",
         js: websiteData.js || "",
         sections: websiteData.sections || [],
       };
+
+      // If html contains raw JSON, try to parse it
+      if (parsed.html && !parsed.css && parsed.html.trim().startsWith("{")) {
+        const reparsed = cleanAndParseAIOutput(parsed.html);
+        if (reparsed.css || reparsed.js) parsed = reparsed;
+      }
       setGenerated(parsed);
       setProgress(100);
 
