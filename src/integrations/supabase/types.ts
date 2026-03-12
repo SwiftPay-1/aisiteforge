@@ -14,6 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          last_used_at: string | null
+          provider_id: string
+          usage_count: number
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          last_used_at?: string | null
+          provider_id: string
+          usage_count?: number
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          last_used_at?: string | null
+          provider_id?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_api_keys_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "ai_providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_providers: {
+        Row: {
+          base_url: string
+          created_at: string
+          display_name: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          models: Json
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          base_url: string
+          created_at?: string
+          display_name: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          models?: Json
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          models?: Json
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       daily_usage: {
         Row: {
           generation_count: number
