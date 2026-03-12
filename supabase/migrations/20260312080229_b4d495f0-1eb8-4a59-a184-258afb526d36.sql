@@ -1,0 +1,2 @@
+UPDATE public.ai_providers SET base_url = 'https://router.huggingface.co/v1/chat/completions' WHERE name = 'huggingface';
+UPDATE public.ai_providers SET is_active = false WHERE name IN ('elevenlabs', 'replicate');
