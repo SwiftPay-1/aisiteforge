@@ -738,6 +738,9 @@ export default function GenerateWebsitePage() {
                   <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
                     <ExternalLink className="h-3.5 w-3.5" /> Open in New Tab
                   </Button>
+                  <Button size="sm" className="h-8 text-xs gap-1.5 gradient-bg border-0 text-primary-foreground" onClick={() => setDeployDialogOpen(true)}>
+                    <Rocket className="h-3.5 w-3.5" /> Deploy to Netlify
+                  </Button>
                 </div>
               </div>
             </div>
