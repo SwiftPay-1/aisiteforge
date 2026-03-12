@@ -17,6 +17,12 @@ import MyWebsitesPage from "./pages/MyWebsitesPage";
 import ProfilePage from "./pages/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
 import AdminPage from "./pages/AdminPage";
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminAIProvidersPage from "./pages/admin/AdminAIProvidersPage";
+import AdminPlansPage from "./pages/admin/AdminPlansPage";
+import AdminSubscriptionsPage from "./pages/admin/AdminSubscriptionsPage";
+import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
+import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +49,12 @@ const App = () => (
               <Route path="profile" element={<ProfilePage />} />
               <Route path="payment" element={<PaymentPage />} />
               <Route path="admin" element={<AdminPage />} />
+              <Route path="admin/users" element={<AdminUsersPage />} />
+              <Route path="admin/ai-providers" element={<AdminAIProvidersPage />} />
+              <Route path="admin/plans" element={<AdminPlansPage />} />
+              <Route path="admin/subscriptions" element={<AdminSubscriptionsPage />} />
+              <Route path="admin/websites" element={<AdminWebsitesPage />} />
+              <Route path="admin/payments" element={<AdminPaymentsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
