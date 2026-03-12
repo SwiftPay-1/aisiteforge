@@ -311,8 +311,20 @@ function extractWebsiteData(aiData: any): { html: string; css: string; js: strin
     return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
   }
 
-  // Last resort: treat entire content as HTML
+  // Try extracting HTML/CSS/JS from markdown code blocks
   if (rawContent && rawContent.length > 100) {
+    const htmlMatch = rawContent.match(/```html\s*([\s\S]*?)```/i);
+    const cssMatch = rawContent.match(/```css\s*([\s\S]*?)```/i);
+    const jsMatch = rawContent.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
+    if (htmlMatch || cssMatch || jsMatch) {
+      return {
+        html: htmlMatch?.[1]?.trim() || "",
+        css: cssMatch?.[1]?.trim() || "",
+        js: jsMatch?.[1]?.trim() || "",
+        sections: [],
+      };
+    }
+    // Last resort: treat entire content as HTML
     return { html: rawContent, css: "", js: "", sections: [] };
   }
 
