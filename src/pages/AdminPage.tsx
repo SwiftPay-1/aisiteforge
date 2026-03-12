@@ -225,8 +225,9 @@ export default function AdminPage() {
       </div>
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="bg-muted">
+        <TabsList className="bg-muted flex-wrap">
           <TabsTrigger value="users" className="gap-1"><Users className="h-3 w-3" /> Users</TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1"><Bot className="h-3 w-3" /> AI Providers</TabsTrigger>
           <TabsTrigger value="plans" className="gap-1"><Package className="h-3 w-3" /> Plans</TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-1"><Crown className="h-3 w-3" /> Subscriptions</TabsTrigger>
           <TabsTrigger value="websites" className="gap-1"><Globe className="h-3 w-3" /> Websites</TabsTrigger>
