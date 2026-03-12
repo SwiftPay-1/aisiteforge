@@ -23,6 +23,7 @@ import AdminPlansPage from "./pages/admin/AdminPlansPage";
 import AdminSubscriptionsPage from "./pages/admin/AdminSubscriptionsPage";
 import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
 import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
+import AdminSystemPromptsPage from "./pages/admin/AdminSystemPromptsPage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
