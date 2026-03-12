@@ -445,12 +445,6 @@ export default function GenerateWebsitePage() {
               </div>
             )}
 
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleDownloadZip}>
-              <Download className="h-3 w-3 mr-1" /> ZIP
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
-              <ExternalLink className="h-3 w-3 mr-1" /> Open
-            </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
               <RotateCcw className="h-3 w-3 mr-1" /> New
             </Button>
@@ -723,10 +717,19 @@ export default function GenerateWebsitePage() {
                   <iframe
                     srcDoc={getFullHTML()}
                     className="w-full bg-white"
-                    style={{ height: "calc(100vh - 12rem)" }}
+                    style={{ height: "calc(100vh - 16rem)" }}
                     sandbox="allow-scripts"
                     title="Website Preview"
                   />
+                </div>
+                {/* Action buttons below preview */}
+                <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={handleDownloadZip}>
+                    <Download className="h-3.5 w-3.5" /> Download ZIP
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                    <ExternalLink className="h-3.5 w-3.5" /> Open in New Tab
+                  </Button>
                 </div>
               </div>
             </div>
