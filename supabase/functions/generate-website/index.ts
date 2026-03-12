@@ -196,6 +196,18 @@ async function tryGenerate(
 
   const model = modelId || (provider.models[0]?.id) || "deepseek-chat";
 
+  // Set max_tokens based on provider limits
+  const providerMaxTokens: Record<string, number> = {
+    groq: 32000,
+    google: 64000,
+    openai: 16000,
+    deepseek: 64000,
+    xai: 32000,
+    huggingface: 16000,
+    replicate: 16000,
+  };
+  const maxTokens = providerMaxTokens[provider.name] || 32000;
+
   try {
     console.log(`Trying provider: ${provider.name}, model: ${model}, tools: ${useTools}`);
 
@@ -206,7 +218,7 @@ async function tryGenerate(
         { role: "user", content: userPrompt },
       ],
       temperature: 0.7,
-      max_tokens: 64000,
+      max_tokens: maxTokens,
     };
 
     // Only add tools if model supports it
