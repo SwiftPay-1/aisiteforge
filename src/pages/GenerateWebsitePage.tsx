@@ -717,7 +717,7 @@ export default function GenerateWebsitePage() {
                   <iframe
                     srcDoc={getFullHTML()}
                     className="w-full bg-white"
-                    style={{ height: "calc(100vh - 12rem)" }}
+                    style={{ height: "calc(100vh - 16rem)" }}
                     sandbox="allow-scripts"
                     title="Website Preview"
                   />
