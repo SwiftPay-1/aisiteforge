@@ -327,7 +327,25 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   if (lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
-  try { return JSON.parse(cleaned); } catch { return null; }
+  try { return JSON.parse(cleaned); } catch { /* try repair */ }
+
+  // Repair truncated JSON
+  let repaired = cleaned.replace(/,\s*$/, "");
+  let inString = false, escape = false;
+  const stack: string[] = [];
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  if (inString) repaired += '"';
+  while (stack.length > 0) repaired += stack.pop();
+  try { return JSON.parse(repaired); } catch { return null; }
 }
 
 function buildSystemPrompt(): string {
