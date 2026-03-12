@@ -10,7 +10,7 @@ interface ProviderConfig {
   id: string;
   name: string;
   base_url: string;
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; supports_tools?: boolean }[];
 }
 
 interface ApiKeyConfig {
@@ -18,6 +18,13 @@ interface ApiKeyConfig {
   api_key: string;
   provider_id: string;
 }
+
+// Models known to NOT support tool calling
+const NO_TOOL_SUPPORT = [
+  "mixtral-8x7b-32768",
+  "gemma2-9b-it",
+  "gemma-7b-it",
+];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -63,8 +70,11 @@ serve(async (req) => {
     const userPrompt = buildUserPrompt(businessName, category, description, theme);
     const tools = buildTools();
 
-    // Try with selected provider, fall back to others if it fails
-    let websiteData = await tryGenerate(provider, apiKey, systemPrompt, userPrompt, tools, modelId);
+    const selectedModel = modelId || (provider.models[0]?.id) || "deepseek-chat";
+    const useTools = !NO_TOOL_SUPPORT.includes(selectedModel);
+
+    // Try with selected provider
+    let websiteData = await tryGenerate(provider, apiKey, systemPrompt, userPrompt, tools, selectedModel, useTools);
 
     if (!websiteData) {
       // Fallback: try Lovable AI gateway
@@ -84,9 +94,9 @@ serve(async (req) => {
         const altKey = altKeys[Math.floor(Math.random() * altKeys.length)];
         const altConfig: ProviderConfig = { id: altProvider.id, name: altProvider.name, base_url: altProvider.base_url, models: altProvider.models || [] };
         const defaultModel = (altProvider.models as any[])?.[0]?.id;
-        websiteData = await tryGenerate(altConfig, altKey, systemPrompt, userPrompt, tools, defaultModel);
+        const altUseTools = !NO_TOOL_SUPPORT.includes(defaultModel || "");
+        websiteData = await tryGenerate(altConfig, altKey, systemPrompt, userPrompt, tools, defaultModel, altUseTools);
         if (websiteData) {
-          // Update usage count for this key
           await adminClient.from("ai_api_keys").update({ usage_count: (altKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", altKey.id);
           break;
         }
@@ -141,12 +151,11 @@ async function getProviderAndKey(adminClient: any, requestedProviderId?: string)
     if (p) {
       provider = { id: p.id, name: p.name, base_url: p.base_url, models: p.models || [] };
       const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", p.id).eq("is_active", true).order("usage_count");
-      if (keys?.length) apiKey = keys[0]; // least used key
+      if (keys?.length) apiKey = keys[0];
     }
   }
 
   if (!provider!) {
-    // Use default provider
     const { data: p } = await adminClient.from("ai_providers").select("*").eq("is_default", true).eq("is_active", true).single();
     if (p) {
       provider = { id: p.id, name: p.name, base_url: p.base_url, models: p.models || [] };
@@ -156,7 +165,6 @@ async function getProviderAndKey(adminClient: any, requestedProviderId?: string)
   }
 
   if (!provider!) {
-    // Fallback to any active provider with keys
     const { data: providers } = await adminClient.from("ai_providers").select("*").eq("is_active", true).order("sort_order");
     for (const p of (providers || [])) {
       const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", p.id).eq("is_active", true).order("usage_count");
@@ -168,7 +176,6 @@ async function getProviderAndKey(adminClient: any, requestedProviderId?: string)
     }
   }
 
-  // If still no provider, create a dummy for Lovable fallback
   if (!provider!) {
     provider = { id: "", name: "lovable", base_url: "", models: [] };
   }
@@ -182,14 +189,31 @@ async function tryGenerate(
   systemPrompt: string,
   userPrompt: string,
   tools: any[],
-  modelId?: string
+  modelId?: string,
+  useTools: boolean = true
 ): Promise<{ html: string; css: string; js: string; sections: any[] } | null> {
   if (!apiKey || !provider.base_url) return null;
 
   const model = modelId || (provider.models[0]?.id) || "deepseek-chat";
 
   try {
-    console.log(`Trying provider: ${provider.name}, model: ${model}`);
+    console.log(`Trying provider: ${provider.name}, model: ${model}, tools: ${useTools}`);
+
+    const body: any = {
+      model,
+      messages: [
+        { role: "system", content: useTools ? systemPrompt : systemPrompt + "\n\nIMPORTANT: Return your response as a JSON object with keys: html, css, js, sections. The sections key should be an array of objects with type, title, content." },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 64000,
+    };
+
+    // Only add tools if model supports it
+    if (useTools) {
+      body.tools = tools;
+      body.tool_choice = { type: "function", function: { name: "create_website" } };
+    }
 
     const response = await fetch(provider.base_url, {
       method: "POST",
@@ -197,21 +221,18 @@ async function tryGenerate(
         Authorization: `Bearer ${apiKey.api_key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "create_website" } },
-        max_tokens: 64000,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Provider ${provider.name} error:`, response.status, errorText);
+
+      // If tool_choice caused the error, retry without tools
+      if (useTools && (response.status === 400 || response.status === 422)) {
+        console.log(`Retrying ${provider.name} without tool_choice...`);
+        return tryGenerate(provider, apiKey, systemPrompt, userPrompt, tools, modelId, false);
+      }
       return null;
     }
 
@@ -262,6 +283,7 @@ async function tryLovableGateway(
 }
 
 function extractWebsiteData(aiData: any): { html: string; css: string; js: string; sections: any[] } | null {
+  // Try tool call first
   const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
   if (toolCall?.function?.arguments) {
     try {
@@ -270,13 +292,15 @@ function extractWebsiteData(aiData: any): { html: string; css: string; js: strin
     } catch { /* fall through */ }
   }
 
+  // Try parsing content as JSON
   const rawContent = aiData.choices?.[0]?.message?.content || "";
   const parsed = cleanAndParseJSON(rawContent);
-  if (parsed) {
+  if (parsed && (parsed.html || parsed.css)) {
     return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
   }
 
-  if (rawContent) {
+  // Last resort: treat entire content as HTML
+  if (rawContent && rawContent.length > 100) {
     return { html: rawContent, css: "", js: "", sections: [] };
   }
 

@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const NO_TOOL_SUPPORT = ["mixtral-8x7b-32768", "gemma2-9b-it", "gemma-7b-it"];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -73,23 +75,61 @@ RULES:
 
       const apiKey = keys[0];
       const model = (provider.models as any[])?.[0]?.id || "deepseek-chat";
+      const useTools = !NO_TOOL_SUPPORT.includes(model);
 
       try {
+        const body: any = {
+          model,
+          messages: [
+            { role: "system", content: useTools ? systemPrompt : systemPrompt + "\n\nIMPORTANT: Return your response as a JSON object with keys: html, css, js." },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.5,
+          max_tokens: 64000,
+        };
+
+        if (useTools) {
+          body.tools = tools;
+          body.tool_choice = { type: "function", function: { name: "update_website" } };
+        }
+
         const response = await fetch(provider.base_url, {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey.api_key}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-            tools,
-            tool_choice: { type: "function", function: { name: "update_website" } },
-            temperature: 0.5,
-            max_tokens: 64000,
-          }),
+          body: JSON.stringify(body),
         });
 
         if (!response.ok) {
           console.error(`Edit provider ${provider.name} error:`, response.status);
+          
+          // If tool_choice caused 400/422, retry without tools
+          if (useTools && (response.status === 400 || response.status === 422)) {
+            console.log(`Retrying ${provider.name} without tool_choice...`);
+            const retryBody = { ...body };
+            delete retryBody.tools;
+            delete retryBody.tool_choice;
+            retryBody.messages[0].content = systemPrompt + "\n\nIMPORTANT: Return your response as a JSON object with keys: html, css, js.";
+            
+            const retryResponse = await fetch(provider.base_url, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey.api_key}`, "Content-Type": "application/json" },
+              body: JSON.stringify(retryBody),
+            });
+            
+            if (retryResponse.ok) {
+              const retryData = await retryResponse.json();
+              const raw = retryData.choices?.[0]?.message?.content || "";
+              const parsed = cleanAndParseJSON(raw);
+              if (parsed) {
+                updatedData = { html: (parsed.html as string) || currentHtml || "", css: (parsed.css as string) || currentCss || "", js: (parsed.js as string) || currentJs || "" };
+              }
+            }
+          }
+          
+          if (updatedData) {
+            await adminClient.from("ai_api_keys").update({ usage_count: (apiKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", apiKey.id);
+            break;
+          }
           continue;
         }
 
