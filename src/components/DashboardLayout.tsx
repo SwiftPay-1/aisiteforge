@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Zap, LayoutDashboard, Globe, User, CreditCard, LogOut, Wand2, Shield, FolderOpen } from "lucide-react";
+import { Zap, LayoutDashboard, Globe, User, CreditCard, LogOut, Wand2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
