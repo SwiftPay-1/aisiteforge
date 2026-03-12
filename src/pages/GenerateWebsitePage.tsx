@@ -240,6 +240,8 @@ export default function GenerateWebsitePage() {
           category: "General",
           description: userPrompt,
           theme: "modern",
+          providerId: selectedProvider || undefined,
+          modelId: selectedModel || undefined,
         }),
       });
 
