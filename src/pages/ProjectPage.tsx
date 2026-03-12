@@ -261,6 +261,9 @@ export default function ProjectPage() {
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
             <ExternalLink className="h-3 w-3 mr-1" /> Open
           </Button>
+          <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
+            <Rocket className="h-3 w-3" /> Deploy
+          </Button>
         </div>
       </div>
 
