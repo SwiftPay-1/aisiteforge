@@ -10,9 +10,8 @@ import ProBadge from "@/components/ProBadge";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-  { label: "Generate Website", icon: Wand2, path: "/dashboard/generate" },
+  { label: "Generate", icon: Wand2, path: "/dashboard/generate" },
   { label: "My Websites", icon: Globe, path: "/dashboard/websites" },
-  { label: "Projects", icon: FolderOpen, path: "/dashboard/websites" },
   { label: "Profile", icon: User, path: "/dashboard/profile" },
   { label: "Payment", icon: CreditCard, path: "/dashboard/payment" },
 ];
