@@ -113,6 +113,25 @@ export default function GenerateWebsitePage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiProviders, setAiProviders] = useState<any[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+
+  // Fetch AI providers on mount
+  useEffect(() => {
+    const fetchProviders = async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data } = await (supabase.from("ai_providers") as any).select("id, display_name, models, is_default").eq("is_active", true).order("sort_order");
+      if (data?.length) {
+        setAiProviders(data);
+        const defaultProv = data.find((p: any) => p.is_default) || data[0];
+        setSelectedProvider(defaultProv.id);
+        const models = defaultProv.models || [];
+        if (models.length) setSelectedModel(models[0].id);
+      }
+    };
+    fetchProviders();
+  }, []);
 
   useEffect(() => {
     if (!generating) return;
