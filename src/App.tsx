@@ -24,6 +24,7 @@ import AdminSubscriptionsPage from "./pages/admin/AdminSubscriptionsPage";
 import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
 import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
 import AdminSystemPromptsPage from "./pages/admin/AdminSystemPromptsPage";
+import AdminNetlifyPage from "./pages/admin/AdminNetlifyPage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
