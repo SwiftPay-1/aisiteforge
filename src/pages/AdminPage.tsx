@@ -93,6 +93,7 @@ export default function AdminPage() {
     { label: "Subscriptions", desc: `${stats.pro} Pro, ${stats.free} Free`, icon: Crown, color: "from-yellow-500 to-yellow-600", route: "subscriptions" },
     { label: "Websites", desc: `${stats.websites} total websites`, icon: Globe, color: "from-cyan-500 to-cyan-600", route: "websites" },
     { label: "Payments", desc: `${stats.pending} pending`, icon: CreditCard, color: stats.pending > 0 ? "from-red-500 to-red-600" : "from-gray-500 to-gray-600", route: "payments" },
+    { label: "Netlify", desc: "Deploy API key settings", icon: Globe, color: "from-teal-500 to-teal-600", route: "netlify" },
   ];
 
   return (

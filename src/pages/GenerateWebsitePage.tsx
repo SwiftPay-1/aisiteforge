@@ -779,6 +779,16 @@ export default function GenerateWebsitePage() {
           )}
         </div>
       </div>
+
+      {generated && (
+        <DeployToNetlifyDialog
+          open={deployDialogOpen}
+          onOpenChange={setDeployDialogOpen}
+          html={editableHtml}
+          css={editableCss}
+          js={editableJs}
+        />
+      )}
     </div>
   );
 }
