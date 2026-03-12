@@ -273,6 +273,11 @@ export default function AdminPage() {
           </div>
         </TabsContent>
 
+        {/* AI Providers tab */}
+        <TabsContent value="ai">
+          <AIProvidersTab />
+        </TabsContent>
+
         {/* Plans tab - NEW */}
         <TabsContent value="plans">
           <div className="space-y-4">
