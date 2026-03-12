@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown } from "lucide-react";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Rocket } from "lucide-react";
+import DeployToNetlifyDialog from "@/components/DeployToNetlifyDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
@@ -111,6 +112,7 @@ export default function GenerateWebsitePage() {
   const [editableJs, setEditableJs] = useState("");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [showSidebar, setShowSidebar] = useState(true);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [aiProviders, setAiProviders] = useState<any[]>([]);
@@ -736,6 +738,9 @@ export default function GenerateWebsitePage() {
                   <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
                     <ExternalLink className="h-3.5 w-3.5" /> Open in New Tab
                   </Button>
+                  <Button size="sm" className="h-8 text-xs gap-1.5 gradient-bg border-0 text-primary-foreground" onClick={() => setDeployDialogOpen(true)}>
+                    <Rocket className="h-3.5 w-3.5" /> Deploy to Netlify
+                  </Button>
                 </div>
               </div>
             </div>
@@ -774,6 +779,16 @@ export default function GenerateWebsitePage() {
           )}
         </div>
       </div>
+
+      {generated && (
+        <DeployToNetlifyDialog
+          open={deployDialogOpen}
+          onOpenChange={setDeployDialogOpen}
+          html={editableHtml}
+          css={editableCss}
+          js={editableJs}
+        />
+      )}
     </div>
   );
 }

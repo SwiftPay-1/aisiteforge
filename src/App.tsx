@@ -24,6 +24,7 @@ import AdminSubscriptionsPage from "./pages/admin/AdminSubscriptionsPage";
 import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
 import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
 import AdminSystemPromptsPage from "./pages/admin/AdminSystemPromptsPage";
+import AdminNetlifyPage from "./pages/admin/AdminNetlifyPage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
@@ -57,6 +58,7 @@ const App = () => (
               <Route path="admin/websites" element={<AdminWebsitesPage />} />
               <Route path="admin/payments" element={<AdminPaymentsPage />} />
               <Route path="admin/system-prompts" element={<AdminSystemPromptsPage />} />
+              <Route path="admin/netlify" element={<AdminNetlifyPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
