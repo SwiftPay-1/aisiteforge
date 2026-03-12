@@ -445,12 +445,6 @@ export default function GenerateWebsitePage() {
               </div>
             )}
 
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleDownloadZip}>
-              <Download className="h-3 w-3 mr-1" /> ZIP
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
-              <ExternalLink className="h-3 w-3 mr-1" /> Open
-            </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
               <RotateCcw className="h-3 w-3 mr-1" /> New
             </Button>
