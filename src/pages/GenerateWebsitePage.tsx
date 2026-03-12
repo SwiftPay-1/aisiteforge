@@ -477,23 +477,9 @@ export default function GenerateWebsitePage() {
                   ))}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
 
-                  {/* Inline action buttons & mini preview after generation success */}
-                  {msg.role === "assistant" && msg.content.includes("generated successfully") && generated && (
-                    <div className="mt-3 space-y-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setViewMode("preview"); setShowSidebar(false); }}>
-                          <Eye className="h-3 w-3 mr-1" /> Preview
-                        </Button>
-                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => { setViewMode("code"); setShowSidebar(false); }}>
-                          <Code className="h-3 w-3 mr-1" /> Code
-                        </Button>
-                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={handleDownloadZip}>
-                          <Download className="h-3 w-3 mr-1" /> ZIP
-                        </Button>
-                        <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
-                          <ExternalLink className="h-3 w-3 mr-1" /> Open
-                        </Button>
-                      </div>
+                  {/* Inline mini preview after generation/edit success */}
+                  {msg.role === "assistant" && (msg.content.includes("generated successfully") || msg.content.includes("Changes applied")) && generated && (
+                    <div className="mt-3">
                       <div className="rounded-lg border border-border overflow-hidden bg-white">
                         <iframe
                           srcDoc={getFullHTML()}
