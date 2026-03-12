@@ -17,6 +17,12 @@ import MyWebsitesPage from "./pages/MyWebsitesPage";
 import ProfilePage from "./pages/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
 import AdminPage from "./pages/AdminPage";
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminAIProvidersPage from "./pages/admin/AdminAIProvidersPage";
+import AdminPlansPage from "./pages/admin/AdminPlansPage";
+import AdminSubscriptionsPage from "./pages/admin/AdminSubscriptionsPage";
+import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
+import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
