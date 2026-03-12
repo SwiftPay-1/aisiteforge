@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft } from "lucide-react";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -112,6 +113,25 @@ export default function GenerateWebsitePage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiProviders, setAiProviders] = useState<any[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+
+  // Fetch AI providers on mount
+  useEffect(() => {
+    const fetchProviders = async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data } = await (supabase.from("ai_providers") as any).select("id, display_name, models, is_default").eq("is_active", true).order("sort_order");
+      if (data?.length) {
+        setAiProviders(data);
+        const defaultProv = data.find((p: any) => p.is_default) || data[0];
+        setSelectedProvider(defaultProv.id);
+        const models = defaultProv.models || [];
+        if (models.length) setSelectedModel(models[0].id);
+      }
+    };
+    fetchProviders();
+  }, []);
 
   useEffect(() => {
     if (!generating) return;
@@ -220,6 +240,8 @@ export default function GenerateWebsitePage() {
           category: "General",
           description: userPrompt,
           theme: "modern",
+          providerId: selectedProvider || undefined,
+          modelId: selectedModel || undefined,
         }),
       });
 
@@ -568,6 +590,43 @@ export default function GenerateWebsitePage() {
 
           {/* Input area */}
           <div className="p-3 border-t border-border bg-card">
+            {/* Model selector */}
+            {aiProviders.length > 0 && (
+              <div className="flex items-center gap-2 mb-2">
+                <Select value={selectedProvider} onValueChange={(v) => {
+                  setSelectedProvider(v);
+                  const prov = aiProviders.find((p: any) => p.id === v);
+                  const models = prov?.models || [];
+                  if (models.length) setSelectedModel(models[0].id);
+                }}>
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[120px] bg-muted/50 border-border">
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {aiProviders.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">{p.display_name}{p.is_default ? " ⭐" : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const prov = aiProviders.find((p: any) => p.id === selectedProvider);
+                  const models = prov?.models || [];
+                  if (!models.length) return null;
+                  return (
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger className="h-7 text-xs w-auto min-w-[130px] bg-muted/50 border-border">
+                        <SelectValue placeholder="Model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {models.map((m: any) => (
+                          <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()}
+              </div>
+            )}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {attachments.map((att, i) => (
