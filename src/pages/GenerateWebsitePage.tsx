@@ -590,6 +590,43 @@ export default function GenerateWebsitePage() {
 
           {/* Input area */}
           <div className="p-3 border-t border-border bg-card">
+            {/* Model selector */}
+            {aiProviders.length > 0 && (
+              <div className="flex items-center gap-2 mb-2">
+                <Select value={selectedProvider} onValueChange={(v) => {
+                  setSelectedProvider(v);
+                  const prov = aiProviders.find((p: any) => p.id === v);
+                  const models = prov?.models || [];
+                  if (models.length) setSelectedModel(models[0].id);
+                }}>
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[120px] bg-muted/50 border-border">
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {aiProviders.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">{p.display_name}{p.is_default ? " ⭐" : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const prov = aiProviders.find((p: any) => p.id === selectedProvider);
+                  const models = prov?.models || [];
+                  if (!models.length) return null;
+                  return (
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger className="h-7 text-xs w-auto min-w-[130px] bg-muted/50 border-border">
+                        <SelectValue placeholder="Model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {models.map((m: any) => (
+                          <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()}
+              </div>
+            )}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 {attachments.map((att, i) => (
