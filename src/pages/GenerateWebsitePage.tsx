@@ -299,6 +299,12 @@ export default function GenerateWebsitePage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 402) {
+          throw new Error("⚡ AI credits exhausted. The service is temporarily unavailable. Please try again later.");
+        }
+        if (response.status === 429) {
+          throw new Error("🕐 Too many requests. Please wait a moment and try again.");
+        }
         throw new Error(errorData.error || `Edit failed`);
       }
 
