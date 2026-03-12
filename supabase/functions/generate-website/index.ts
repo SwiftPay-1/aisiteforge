@@ -155,7 +155,7 @@ Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, t
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
