@@ -25,8 +25,10 @@ serve(async (req) => {
     const { websiteId, prompt, currentHtml, currentCss, currentJs } = await req.json();
     if (!prompt) throw new Error("Prompt is required");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     const systemPrompt = `You are an elite website editor. You receive existing website code and a user's edit request.
 Apply the requested changes and return the COMPLETE updated code.
@@ -42,104 +44,112 @@ RULES:
 
     const userPrompt = `Current HTML:\n${currentHtml || "(empty)"}\n\nCurrent CSS:\n${currentCss || "(empty)"}\n\nCurrent JS:\n${currentJs || "(empty)"}\n\nUser's edit request: ${prompt}\n\nApply the changes now.`;
 
-    // Use tool calling for guaranteed structured output
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "update_website",
-          description: "Return the complete updated website code after applying edits",
-          parameters: {
-            type: "object",
-            properties: {
-              html: { type: "string", description: "Complete updated inner body HTML" },
-              css: { type: "string", description: "Complete updated CSS" },
-              js: { type: "string", description: "Complete updated JavaScript" },
-            },
-            required: ["html", "css", "js"],
-            additionalProperties: false
+    const tools = [{
+      type: "function",
+      function: {
+        name: "update_website",
+        description: "Return the complete updated website code after applying edits",
+        parameters: {
+          type: "object",
+          properties: {
+            html: { type: "string", description: "Complete updated inner body HTML" },
+            css: { type: "string", description: "Complete updated CSS" },
+            js: { type: "string", description: "Complete updated JavaScript" },
+          },
+          required: ["html", "css", "js"],
+          additionalProperties: false,
+        },
+      },
+    }];
+
+    let updatedData: { html: string; css: string; js: string } | null = null;
+
+    // Try admin-configured providers first
+    const { data: providers } = await adminClient.from("ai_providers").select("*").eq("is_active", true).order("is_default", { ascending: false }).order("sort_order");
+
+    for (const provider of (providers || [])) {
+      const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", provider.id).eq("is_active", true).order("usage_count");
+      if (!keys?.length) continue;
+
+      const apiKey = keys[0];
+      const model = (provider.models as any[])?.[0]?.id || "deepseek-chat";
+
+      try {
+        const response = await fetch(provider.base_url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey.api_key}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+            tools,
+            tool_choice: { type: "function", function: { name: "update_website" } },
+            temperature: 0.5,
+            max_tokens: 64000,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error(`Edit provider ${provider.name} error:`, response.status);
+          continue;
+        }
+
+        const aiData = await response.json();
+        const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) {
+          const args = JSON.parse(toolCall.function.arguments);
+          updatedData = { html: args.html || currentHtml || "", css: args.css || currentCss || "", js: args.js || currentJs || "" };
+        } else {
+          const raw = aiData.choices?.[0]?.message?.content || "";
+          const parsed = cleanAndParseJSON(raw);
+          if (parsed) updatedData = { html: (parsed.html as string) || currentHtml || "", css: (parsed.css as string) || currentCss || "", js: (parsed.js as string) || currentJs || "" };
+        }
+
+        if (updatedData) {
+          await adminClient.from("ai_api_keys").update({ usage_count: (apiKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", apiKey.id);
+          break;
+        }
+      } catch (e) {
+        console.error(`Edit provider ${provider.name} exception:`, e);
+      }
+    }
+
+    // Fallback to Lovable gateway
+    if (!updatedData) {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY) {
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+            tools,
+            tool_choice: { type: "function", function: { name: "update_website" } },
+            temperature: 0.5, max_tokens: 64000,
+          }),
+        });
+
+        if (response.ok) {
+          const aiData = await response.json();
+          const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+          if (toolCall?.function?.arguments) {
+            const args = JSON.parse(toolCall.function.arguments);
+            updatedData = { html: args.html || currentHtml || "", css: args.css || currentCss || "", js: args.js || currentJs || "" };
           }
         }
       }
-    ];
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "update_website" } },
-        temperature: 0.5,
-        max_tokens: 64000,
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit reached. Please try again in a moment." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please try again later." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI edit failed");
     }
 
-    const aiData = await response.json();
-    
-    let updatedData: { html: string; css: string; js: string };
-    
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        updatedData = {
-          html: args.html || currentHtml || "",
-          css: args.css || currentCss || "",
-          js: args.js || currentJs || "",
-        };
-      } catch {
-        throw new Error("Failed to parse AI response");
-      }
-    } else {
-      // Fallback
-      const rawContent = aiData.choices?.[0]?.message?.content || "";
-      const parsed = cleanAndParseJSON(rawContent);
-      if (!parsed) throw new Error("Failed to parse AI response");
-      updatedData = {
-        html: (parsed.html as string) || currentHtml || "",
-        css: (parsed.css as string) || currentCss || "",
-        js: (parsed.js as string) || currentJs || "",
-      };
+    if (!updatedData) {
+      return new Response(JSON.stringify({ error: "All AI providers failed. Please check API keys in admin settings." }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (websiteId) {
-      const adminClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      await adminClient
-        .from("websites")
-        .update({
-          html_content: updatedData.html,
-          css_content: updatedData.css,
-          js_content: updatedData.js,
-        })
-        .eq("id", websiteId)
-        .eq("user_id", user.id);
+      await adminClient.from("websites").update({
+        html_content: updatedData.html, css_content: updatedData.css, js_content: updatedData.js,
+      }).eq("id", websiteId).eq("user_id", user.id);
     }
 
     return new Response(JSON.stringify({ updated: updatedData }), {
@@ -147,10 +157,9 @@ RULES:
     });
   } catch (e) {
     console.error("edit-website error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
 
