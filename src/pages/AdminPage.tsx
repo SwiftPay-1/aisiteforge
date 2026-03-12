@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Users, Globe, CreditCard, Shield, Crown, Code2, Package, Bot } from "lucide-react";
+import { Users, Globe, CreditCard, Shield, Crown, Code2, Package, Bot, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
