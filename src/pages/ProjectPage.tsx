@@ -53,6 +53,7 @@ export default function ProjectPage() {
   const [attachments, setAttachments] = useState<string[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
