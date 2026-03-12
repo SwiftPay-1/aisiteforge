@@ -19,12 +19,8 @@ interface ApiKeyConfig {
   provider_id: string;
 }
 
-// Models known to NOT support tool calling
-const NO_TOOL_SUPPORT = [
-  "mixtral-8x7b-32768",
-  "gemma2-9b-it",
-  "gemma-7b-it",
-];
+// Providers that should NEVER use tool calling (they fail or return broken formats)
+const NO_TOOL_PROVIDERS = ["groq", "huggingface", "replicate"];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -66,22 +62,23 @@ serve(async (req) => {
     // Get provider and keys from DB
     const { provider, apiKey } = await getProviderAndKey(adminClient, providerId);
 
-    const systemPrompt = buildSystemPrompt();
+    // Get system prompt from DB (use default or first active)
+    const systemPrompt = await getSystemPrompt(adminClient);
     const userPrompt = buildUserPrompt(businessName, category, description, theme);
-    const tools = buildTools();
 
-    const selectedModel = modelId || (provider.models[0]?.id) || "deepseek-chat";
-    const useTools = !NO_TOOL_SUPPORT.includes(selectedModel);
+    const selectedModel = modelId || (provider.models[0]?.id) || "llama-3.3-70b-versatile";
+    // Never use tools for providers known to fail
+    const useTools = !NO_TOOL_PROVIDERS.includes(provider.name);
 
     // Try with selected provider
-    let websiteData = await tryGenerate(provider, apiKey, systemPrompt, userPrompt, tools, selectedModel, useTools);
+    let websiteData = await tryGenerate(provider, apiKey, systemPrompt, userPrompt, selectedModel, useTools);
 
     if (!websiteData) {
       // Fallback: try Lovable AI gateway
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
         console.log("Falling back to Lovable AI gateway");
-        websiteData = await tryLovableGateway(LOVABLE_API_KEY, systemPrompt, userPrompt, tools);
+        websiteData = await tryLovableGateway(LOVABLE_API_KEY, systemPrompt, userPrompt);
       }
     }
 
@@ -94,8 +91,8 @@ serve(async (req) => {
         const altKey = altKeys[Math.floor(Math.random() * altKeys.length)];
         const altConfig: ProviderConfig = { id: altProvider.id, name: altProvider.name, base_url: altProvider.base_url, models: altProvider.models || [] };
         const defaultModel = (altProvider.models as any[])?.[0]?.id;
-        const altUseTools = !NO_TOOL_SUPPORT.includes(defaultModel || "");
-        websiteData = await tryGenerate(altConfig, altKey, systemPrompt, userPrompt, tools, defaultModel, altUseTools);
+        const altUseTools = !NO_TOOL_PROVIDERS.includes(altProvider.name);
+        websiteData = await tryGenerate(altConfig, altKey, systemPrompt, userPrompt, defaultModel, altUseTools);
         if (websiteData) {
           await adminClient.from("ai_api_keys").update({ usage_count: (altKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", altKey.id);
           break;
@@ -141,6 +138,41 @@ serve(async (req) => {
     });
   }
 });
+
+async function getSystemPrompt(adminClient: any): Promise<string> {
+  // Try to get default prompt from DB
+  const { data: defaultPrompt } = await adminClient
+    .from("system_prompts")
+    .select("prompt_text")
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .single();
+  
+  if (defaultPrompt?.prompt_text) return defaultPrompt.prompt_text;
+
+  // Fallback to any active prompt
+  const { data: anyPrompt } = await adminClient
+    .from("system_prompts")
+    .select("prompt_text")
+    .eq("is_active", true)
+    .order("sort_order")
+    .limit(1)
+    .single();
+
+  if (anyPrompt?.prompt_text) return anyPrompt.prompt_text;
+
+  // Hardcoded fallback
+  return buildFallbackSystemPrompt();
+}
+
+function buildFallbackSystemPrompt(): string {
+  return `You are a world-class web developer. Return ONLY a valid JSON object with keys: html, css, js, sections.
+- html = inner body HTML only (no DOCTYPE/html/head/body tags)
+- css = complete CSS with @import for Google Fonts and Font Awesome 6
+- js = complete JavaScript
+- sections = array of {type, title, content}
+IMPORTANT: Return ONLY valid JSON. No markdown, no code blocks.`;
+}
 
 async function getProviderAndKey(adminClient: any, requestedProviderId?: string) {
   let provider: ProviderConfig;
@@ -188,42 +220,38 @@ async function tryGenerate(
   apiKey: ApiKeyConfig | null,
   systemPrompt: string,
   userPrompt: string,
-  tools: any[],
   modelId?: string,
-  useTools: boolean = true
+  useTools: boolean = false
 ): Promise<{ html: string; css: string; js: string; sections: any[] } | null> {
   if (!apiKey || !provider.base_url) return null;
 
-  const model = modelId || (provider.models[0]?.id) || "deepseek-chat";
+  const model = modelId || (provider.models[0]?.id) || "llama-3.3-70b-versatile";
 
-  // Set max_tokens based on provider limits
   const providerMaxTokens: Record<string, number> = {
-    groq: 32000,
-    google: 64000,
-    openai: 16000,
-    deepseek: 64000,
-    xai: 32000,
-    huggingface: 16000,
-    replicate: 16000,
+    groq: 32000, google: 64000, openai: 16000, deepseek: 64000, xai: 32000, huggingface: 16000,
   };
   const maxTokens = providerMaxTokens[provider.name] || 32000;
 
   try {
-    console.log(`Trying provider: ${provider.name}, model: ${model}, tools: ${useTools}`);
+    console.log(`Trying provider: ${provider.name}, model: ${model}, useTools: ${useTools}`);
 
     const body: any = {
       model,
       messages: [
-        { role: "system", content: useTools ? systemPrompt : systemPrompt + "\n\nIMPORTANT: Return your response as a JSON object with keys: html, css, js, sections. The sections key should be an array of objects with type, title, content." },
+        { role: "system", content: systemPrompt + "\n\nIMPORTANT: Return ONLY a raw JSON object. No markdown code blocks, no explanations, no ```json wrapping. Just the pure JSON starting with { and ending with }." },
         { role: "user", content: userPrompt },
       ],
       temperature: 0.7,
       max_tokens: maxTokens,
     };
 
-    // Only add tools if model supports it
+    // Add response_format for providers that support it
+    if (provider.name === "groq" || provider.name === "openai" || provider.name === "deepseek") {
+      body.response_format = { type: "json_object" };
+    }
+
     if (useTools) {
-      body.tools = tools;
+      body.tools = buildTools();
       body.tool_choice = { type: "function", function: { name: "create_website" } };
     }
 
@@ -238,13 +266,7 @@ async function tryGenerate(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Provider ${provider.name} error:`, response.status, errorText);
-
-      // If tool_choice caused the error, retry without tools
-      if (useTools && (response.status === 400 || response.status === 422)) {
-        console.log(`Retrying ${provider.name} without tool_choice...`);
-        return tryGenerate(provider, apiKey, systemPrompt, userPrompt, tools, modelId, false);
-      }
+      console.error(`Provider ${provider.name} error: ${response.status} ${errorText}`);
       return null;
     }
 
@@ -260,7 +282,6 @@ async function tryLovableGateway(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
-  tools: any[]
 ): Promise<{ html: string; css: string; js: string; sections: any[] } | null> {
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -270,13 +291,11 @@ async function tryLovableGateway(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n\nReturn ONLY valid JSON. No markdown." },
           { role: "user", content: userPrompt },
         ],
-        tools,
-        tool_choice: { type: "function", function: { name: "create_website" } },
         max_tokens: 64000,
       }),
     });
@@ -295,36 +314,65 @@ async function tryLovableGateway(
 }
 
 function extractWebsiteData(aiData: any): { html: string; css: string; js: string; sections: any[] } | null {
-  // Try tool call first
+  // 1. Try tool call first
   const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
   if (toolCall?.function?.arguments) {
     try {
       const args = JSON.parse(toolCall.function.arguments);
-      return { html: args.html || "", css: args.css || "", js: args.js || "", sections: args.sections || [] };
+      if (args.html || args.css) {
+        console.log("Extracted from tool_call");
+        return { html: args.html || "", css: args.css || "", js: args.js || "", sections: args.sections || [] };
+      }
     } catch { /* fall through */ }
   }
 
-  // Try parsing content as JSON
   const rawContent = aiData.choices?.[0]?.message?.content || "";
+  if (!rawContent || rawContent.length < 50) return null;
+
+  // 2. Try parsing content that starts with <function=create_website> (Groq format)
+  const funcMatch = rawContent.match(/<function=create_website>([\s\S]*?)(?:<\/function>|$)/);
+  if (funcMatch) {
+    const parsed = cleanAndParseJSON(funcMatch[1]);
+    if (parsed && (parsed.html || parsed.css)) {
+      console.log("Extracted from <function> tag format");
+      return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
+    }
+  }
+
+  // 3. Try direct JSON parse of entire content
   const parsed = cleanAndParseJSON(rawContent);
   if (parsed && (parsed.html || parsed.css)) {
+    console.log("Extracted from direct JSON parse");
     return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
   }
 
-  // Try extracting HTML/CSS/JS from markdown code blocks
-  if (rawContent && rawContent.length > 100) {
-    const htmlMatch = rawContent.match(/```html\s*([\s\S]*?)```/i);
-    const cssMatch = rawContent.match(/```css\s*([\s\S]*?)```/i);
-    const jsMatch = rawContent.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
-    if (htmlMatch || cssMatch || jsMatch) {
-      return {
-        html: htmlMatch?.[1]?.trim() || "",
-        css: cssMatch?.[1]?.trim() || "",
-        js: jsMatch?.[1]?.trim() || "",
-        sections: [],
-      };
+  // 4. Try extracting from markdown code blocks
+  const jsonBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    const blockParsed = cleanAndParseJSON(jsonBlockMatch[1]);
+    if (blockParsed && (blockParsed.html || blockParsed.css)) {
+      console.log("Extracted from markdown JSON block");
+      return { html: (blockParsed.html as string) || "", css: (blockParsed.css as string) || "", js: (blockParsed.js as string) || "", sections: (blockParsed.sections as any[]) || [] };
     }
-    // Last resort: treat entire content as HTML
+  }
+
+  // 5. Extract separate HTML/CSS/JS code blocks
+  const htmlMatch = rawContent.match(/```html\s*([\s\S]*?)```/i);
+  const cssMatch = rawContent.match(/```css\s*([\s\S]*?)```/i);
+  const jsMatch = rawContent.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
+  if (htmlMatch || cssMatch || jsMatch) {
+    console.log("Extracted from separate code blocks");
+    return {
+      html: htmlMatch?.[1]?.trim() || "",
+      css: cssMatch?.[1]?.trim() || "",
+      js: jsMatch?.[1]?.trim() || "",
+      sections: [],
+    };
+  }
+
+  // 6. Last resort: if content looks like HTML, treat as HTML
+  if (rawContent.includes("<") && rawContent.includes(">") && rawContent.length > 200) {
+    console.log("Treating raw content as HTML");
     return { html: rawContent, css: "", js: "", sections: [] };
   }
 
@@ -332,11 +380,13 @@ function extractWebsiteData(aiData: any): { html: string; css: string; js: strin
 }
 
 function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
+  if (!raw || raw.length < 10) return null;
   let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
   const firstBrace = cleaned.indexOf("{");
   const lastBrace = cleaned.lastIndexOf("}");
   if (firstBrace === -1) return null;
   if (lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  else cleaned = cleaned.substring(firstBrace);
   cleaned = cleaned.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
   try { return JSON.parse(cleaned); } catch { /* try repair */ }
@@ -360,51 +410,13 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   try { return JSON.parse(repaired); } catch { return null; }
 }
 
-function buildSystemPrompt(): string {
-  return `You are a world-class web developer building PRODUCTION-READY, FULLY COMPLETE websites that look like they were built by a top agency.
-
-OUTPUT FORMAT:
-- HTML = inner body HTML only. NEVER include <!DOCTYPE>, <html>, <head>, <body> tags.
-- CSS = complete CSS starting with @import for Google Fonts (pick 2 complementary fonts) and Font Awesome 6 CDN: @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
-- JS = complete JavaScript for all interactivity.
-- ALL HTML tags MUST be properly closed.
-
-DESIGN REQUIREMENTS - THIS IS CRITICAL:
-1. HERO SECTION: Full-viewport hero with gradient/image background, large compelling headline, subtitle, and 1-2 CTA buttons. Must feel premium.
-2. NAVIGATION: Sticky/fixed nav with logo, menu links, and a CTA button. Must include working mobile hamburger menu.
-3. ABOUT/STORY SECTION: Two-column layout with image and text. Include statistics/counters.
-4. SERVICES/FEATURES: Grid of 4-6 cards with icons (Font Awesome), titles, and descriptions with hover effects.
-5. PORTFOLIO/GALLERY: Grid of 4-6 items with overlay hover effects.
-6. TESTIMONIALS: 3 testimonial cards with avatar, quote, name, and star ratings.
-7. CONTACT SECTION: Split layout - contact info on one side, contact form on the other.
-8. FOOTER: Multi-column footer with links, social icons, newsletter signup, and copyright.
-
-CSS QUALITY REQUIREMENTS:
-- Use CSS custom properties (--primary-color, --secondary-color, etc.)
-- Smooth transitions on ALL interactive elements (0.3s ease)
-- Box shadows for depth, gradient backgrounds
-- Responsive breakpoints: 1200px, 992px, 768px, 576px
-- Scroll-triggered fade-in animations
-- Professional spacing: generous padding (60-100px vertical sections)
-- Typography hierarchy: h1 (3-4rem), h2 (2-2.5rem), h3 (1.3-1.5rem), body (1rem-1.1rem)
-
-JS REQUIREMENTS:
-- Smooth scroll for anchor links
-- Mobile hamburger menu toggle
-- Scroll-triggered fade-in animations using IntersectionObserver
-- Sticky navbar background change on scroll
-- Form validation, Back-to-top button
-
-IMAGE PLACEHOLDERS: Use https://placehold.co/ with meaningful dimensions.
-
-The website MUST look like a real, production website.`;
-}
-
 function buildUserPrompt(businessName: string, category: string, description: string, theme: string): string {
   return `Build a COMPLETE, PRODUCTION-READY ${theme} website for "${businessName}" (${category}).
 Business description: ${description}
 
-Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, testimonials, contact, footer) with realistic content. Make it look like a $5000+ agency-built website. Use colors and styling that match the "${theme}" theme perfectly.`;
+Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, testimonials, contact, footer) with realistic content. Make it look like a $5000+ agency-built website. Use colors and styling that match the "${theme}" theme perfectly.
+
+Return ONLY a JSON object with keys: html, css, js, sections.`;
 }
 
 function buildTools(): any[] {
@@ -429,7 +441,7 @@ function buildTools(): any[] {
             },
           },
         },
-        required: ["html", "css", "js", "sections"],
+        required: ["html", "css", "js"],
         additionalProperties: false,
       },
     },
