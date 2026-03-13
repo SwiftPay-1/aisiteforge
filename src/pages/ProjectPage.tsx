@@ -287,6 +287,36 @@ export default function ProjectPage() {
                     )
                   ))}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                  {/* Inline actions after edit success */}
+                  {msg.role === "assistant" && msg.content.includes("Changes applied") && (
+                    <div className="mt-3">
+                      <div className="rounded-lg border border-border overflow-hidden bg-white">
+                        <iframe
+                          srcDoc={getFullHTML()}
+                          className="w-full h-32 pointer-events-none"
+                          sandbox="allow-scripts"
+                          title="Mini Preview"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleDownloadZip}>
+                          <Download className="h-2.5 w-2.5" /> ZIP
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                          <ExternalLink className="h-2.5 w-2.5" /> Open
+                        </Button>
+                      </div>
+                      <PublishWebsiteInline
+                        html={editableHtml}
+                        css={editableCss}
+                        js={editableJs}
+                        defaultName={websiteName}
+                        websiteId={id}
+                      />
+                    </div>
+                  )}
+
                   <span className="text-[10px] opacity-50 mt-1 block">
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
