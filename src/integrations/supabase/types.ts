@@ -394,6 +394,7 @@ export type Database = {
           category: string | null
           created_at: string
           css_content: string | null
+          deployed_url: string | null
           description: string | null
           html_content: string | null
           id: string
@@ -408,6 +409,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           css_content?: string | null
+          deployed_url?: string | null
           description?: string | null
           html_content?: string | null
           id?: string
@@ -422,6 +424,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           css_content?: string | null
+          deployed_url?: string | null
           description?: string | null
           html_content?: string | null
           id?: string
