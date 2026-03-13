@@ -112,8 +112,7 @@ export default function GenerateWebsitePage() {
   const [editableJs, setEditableJs] = useState("");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [showSidebar, setShowSidebar] = useState(true);
-  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
-  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [showActionButtons, setShowActionButtons] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [aiProviders, setAiProviders] = useState<any[]>([]);
