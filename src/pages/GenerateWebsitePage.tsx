@@ -455,6 +455,12 @@ export default function GenerateWebsitePage() {
               </div>
             )}
 
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPublishDialogOpen(true)}>
+              <Globe className="h-3 w-3" /> Publish Free
+            </Button>
+            <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
+              <Rocket className="h-3 w-3" /> Netlify
+            </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
               <RotateCcw className="h-3 w-3 mr-1" /> New
             </Button>
