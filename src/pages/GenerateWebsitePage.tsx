@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Rocket } from "lucide-react";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Rocket, Globe } from "lucide-react";
 import DeployToNetlifyDialog from "@/components/DeployToNetlifyDialog";
+import PublishWebsiteDialog from "@/components/PublishWebsiteDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
@@ -113,6 +114,7 @@ export default function GenerateWebsitePage() {
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [showSidebar, setShowSidebar] = useState(true);
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [aiProviders, setAiProviders] = useState<any[]>([]);
@@ -453,6 +455,12 @@ export default function GenerateWebsitePage() {
               </div>
             )}
 
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPublishDialogOpen(true)}>
+              <Globe className="h-3 w-3" /> Publish Free
+            </Button>
+            <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
+              <Rocket className="h-3 w-3" /> Netlify
+            </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
               <RotateCcw className="h-3 w-3 mr-1" /> New
             </Button>
@@ -781,13 +789,23 @@ export default function GenerateWebsitePage() {
       </div>
 
       {generated && (
-        <DeployToNetlifyDialog
-          open={deployDialogOpen}
-          onOpenChange={setDeployDialogOpen}
-          html={editableHtml}
-          css={editableCss}
-          js={editableJs}
-        />
+        <>
+          <DeployToNetlifyDialog
+            open={deployDialogOpen}
+            onOpenChange={setDeployDialogOpen}
+            html={editableHtml}
+            css={editableCss}
+            js={editableJs}
+          />
+          <PublishWebsiteDialog
+            open={publishDialogOpen}
+            onOpenChange={setPublishDialogOpen}
+            html={editableHtml}
+            css={editableCss}
+            js={editableJs}
+            websiteId={websiteId}
+          />
+        </>
       )}
     </div>
   );

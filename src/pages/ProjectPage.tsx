@@ -3,8 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
-import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft, Rocket } from "lucide-react";
+import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft, Rocket, Globe } from "lucide-react";
 import DeployToNetlifyDialog from "@/components/DeployToNetlifyDialog";
+import PublishWebsiteDialog from "@/components/PublishWebsiteDialog";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,6 +55,7 @@ export default function ProjectPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -261,8 +263,11 @@ export default function ProjectPage() {
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
             <ExternalLink className="h-3 w-3 mr-1" /> Open
           </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPublishDialogOpen(true)}>
+            <Globe className="h-3 w-3" /> Publish Free
+          </Button>
           <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
-            <Rocket className="h-3 w-3" /> Deploy
+            <Rocket className="h-3 w-3" /> Netlify
           </Button>
         </div>
       </div>
@@ -452,6 +457,15 @@ export default function ProjectPage() {
         css={editableCss}
         js={editableJs}
         defaultName={websiteName}
+      />
+      <PublishWebsiteDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        html={editableHtml}
+        css={editableCss}
+        js={editableJs}
+        defaultName={websiteName}
+        websiteId={id}
       />
     </div>
   );
