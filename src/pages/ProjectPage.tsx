@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
-import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft, Globe } from "lucide-react";
+import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft } from "lucide-react";
 import PublishWebsiteInline from "@/components/PublishWebsiteInline";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
