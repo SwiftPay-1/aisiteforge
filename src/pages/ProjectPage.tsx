@@ -441,23 +441,6 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      <DeployToNetlifyDialog
-        open={deployDialogOpen}
-        onOpenChange={setDeployDialogOpen}
-        html={editableHtml}
-        css={editableCss}
-        js={editableJs}
-        defaultName={websiteName}
-      />
-      <PublishWebsiteDialog
-        open={publishDialogOpen}
-        onOpenChange={setPublishDialogOpen}
-        html={editableHtml}
-        css={editableCss}
-        js={editableJs}
-        defaultName={websiteName}
-        websiteId={id}
-      />
     </div>
   );
 }
