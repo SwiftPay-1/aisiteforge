@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.edit-website]
 verify_jwt = false
+
+[functions.serve-website]
+verify_jwt = false

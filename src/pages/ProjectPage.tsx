@@ -3,9 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
-import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft, Rocket, Globe } from "lucide-react";
-import DeployToNetlifyDialog from "@/components/DeployToNetlifyDialog";
-import PublishWebsiteDialog from "@/components/PublishWebsiteDialog";
+import { Eye, Loader2, Download, ExternalLink, Sparkles, Code, Send, RotateCcw, Paperclip, X, Monitor, Smartphone, Tablet, PanelLeft, Wand2, FileCode, ArrowLeft } from "lucide-react";
+import PublishWebsiteInline from "@/components/PublishWebsiteInline";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,8 +53,6 @@ export default function ProjectPage() {
   const [attachments, setAttachments] = useState<string[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
-  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -263,12 +260,6 @@ export default function ProjectPage() {
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
             <ExternalLink className="h-3 w-3 mr-1" /> Open
           </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPublishDialogOpen(true)}>
-            <Globe className="h-3 w-3" /> Publish Free
-          </Button>
-          <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
-            <Rocket className="h-3 w-3" /> Netlify
-          </Button>
         </div>
       </div>
 
@@ -296,6 +287,36 @@ export default function ProjectPage() {
                     )
                   ))}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                  {/* Inline actions after edit success */}
+                  {msg.role === "assistant" && msg.content.includes("Changes applied") && (
+                    <div className="mt-3">
+                      <div className="rounded-lg border border-border overflow-hidden bg-white">
+                        <iframe
+                          srcDoc={getFullHTML()}
+                          className="w-full h-32 pointer-events-none"
+                          sandbox="allow-scripts"
+                          title="Mini Preview"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleDownloadZip}>
+                          <Download className="h-2.5 w-2.5" /> ZIP
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                          <ExternalLink className="h-2.5 w-2.5" /> Open
+                        </Button>
+                      </div>
+                      <PublishWebsiteInline
+                        html={editableHtml}
+                        css={editableCss}
+                        js={editableJs}
+                        defaultName={websiteName}
+                        websiteId={id}
+                      />
+                    </div>
+                  )}
+
                   <span className="text-[10px] opacity-50 mt-1 block">
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -450,23 +471,6 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      <DeployToNetlifyDialog
-        open={deployDialogOpen}
-        onOpenChange={setDeployDialogOpen}
-        html={editableHtml}
-        css={editableCss}
-        js={editableJs}
-        defaultName={websiteName}
-      />
-      <PublishWebsiteDialog
-        open={publishDialogOpen}
-        onOpenChange={setPublishDialogOpen}
-        html={editableHtml}
-        css={editableCss}
-        js={editableJs}
-        defaultName={websiteName}
-        websiteId={id}
-      />
     </div>
   );
 }

@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Rocket, Globe } from "lucide-react";
-import DeployToNetlifyDialog from "@/components/DeployToNetlifyDialog";
-import PublishWebsiteDialog from "@/components/PublishWebsiteDialog";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Globe } from "lucide-react";
+import PublishWebsiteInline from "@/components/PublishWebsiteInline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CodeEditor from "@/components/CodeEditor";
 import { toast } from "sonner";
@@ -113,8 +112,7 @@ export default function GenerateWebsitePage() {
   const [editableJs, setEditableJs] = useState("");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [showSidebar, setShowSidebar] = useState(true);
-  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
-  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [showActionButtons, setShowActionButtons] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [aiProviders, setAiProviders] = useState<any[]>([]);
@@ -455,12 +453,6 @@ export default function GenerateWebsitePage() {
               </div>
             )}
 
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPublishDialogOpen(true)}>
-              <Globe className="h-3 w-3" /> Publish Free
-            </Button>
-            <Button size="sm" className="h-7 text-xs gradient-bg border-0 text-primary-foreground gap-1" onClick={() => setDeployDialogOpen(true)}>
-              <Rocket className="h-3 w-3" /> Netlify
-            </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={handleStartOver}>
               <RotateCcw className="h-3 w-3 mr-1" /> New
             </Button>
@@ -532,6 +524,30 @@ export default function GenerateWebsitePage() {
                           title="Mini Preview"
                         />
                       </div>
+
+                      {/* Action buttons below preview */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => setViewMode("preview")}>
+                          <Eye className="h-2.5 w-2.5" /> Preview
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => setViewMode("code")}>
+                          <Code className="h-2.5 w-2.5" /> Code
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleDownloadZip}>
+                          <Download className="h-2.5 w-2.5" /> ZIP
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                          <ExternalLink className="h-2.5 w-2.5" /> Open
+                        </Button>
+                      </div>
+
+                      {/* Inline publish */}
+                      <PublishWebsiteInline
+                        html={editableHtml}
+                        css={editableCss}
+                        js={editableJs}
+                        websiteId={websiteId}
+                      />
                     </div>
                   )}
 
@@ -746,8 +762,8 @@ export default function GenerateWebsitePage() {
                   <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
                     <ExternalLink className="h-3.5 w-3.5" /> Open in New Tab
                   </Button>
-                  <Button size="sm" className="h-8 text-xs gap-1.5 gradient-bg border-0 text-primary-foreground" onClick={() => setDeployDialogOpen(true)}>
-                    <Rocket className="h-3.5 w-3.5" /> Deploy to Netlify
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => setShowActionButtons(true)}>
+                    <Globe className="h-3.5 w-3.5" /> Publish Free
                   </Button>
                 </div>
               </div>
@@ -788,25 +804,6 @@ export default function GenerateWebsitePage() {
         </div>
       </div>
 
-      {generated && (
-        <>
-          <DeployToNetlifyDialog
-            open={deployDialogOpen}
-            onOpenChange={setDeployDialogOpen}
-            html={editableHtml}
-            css={editableCss}
-            js={editableJs}
-          />
-          <PublishWebsiteDialog
-            open={publishDialogOpen}
-            onOpenChange={setPublishDialogOpen}
-            html={editableHtml}
-            css={editableCss}
-            js={editableJs}
-            websiteId={websiteId}
-          />
-        </>
-      )}
     </div>
   );
 }
