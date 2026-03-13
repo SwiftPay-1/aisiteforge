@@ -524,6 +524,30 @@ export default function GenerateWebsitePage() {
                           title="Mini Preview"
                         />
                       </div>
+
+                      {/* Action buttons below preview */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => setViewMode("preview")}>
+                          <Eye className="h-2.5 w-2.5" /> Preview
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => setViewMode("code")}>
+                          <Code className="h-2.5 w-2.5" /> Code
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={handleDownloadZip}>
+                          <Download className="h-2.5 w-2.5" /> ZIP
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 gap-1" onClick={() => window.open(URL.createObjectURL(new Blob([getFullHTML()], { type: "text/html" })), "_blank")}>
+                          <ExternalLink className="h-2.5 w-2.5" /> Open
+                        </Button>
+                      </div>
+
+                      {/* Inline publish */}
+                      <PublishWebsiteInline
+                        html={editableHtml}
+                        css={editableCss}
+                        js={editableJs}
+                        websiteId={websiteId}
+                      />
                     </div>
                   )}
 
