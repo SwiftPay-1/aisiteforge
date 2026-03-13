@@ -458,6 +458,15 @@ export default function ProjectPage() {
         js={editableJs}
         defaultName={websiteName}
       />
+      <PublishWebsiteDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        html={editableHtml}
+        css={editableCss}
+        js={editableJs}
+        defaultName={websiteName}
+        websiteId={id}
+      />
     </div>
   );
 }

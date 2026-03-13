@@ -789,13 +789,23 @@ export default function GenerateWebsitePage() {
       </div>
 
       {generated && (
-        <DeployToNetlifyDialog
-          open={deployDialogOpen}
-          onOpenChange={setDeployDialogOpen}
-          html={editableHtml}
-          css={editableCss}
-          js={editableJs}
-        />
+        <>
+          <DeployToNetlifyDialog
+            open={deployDialogOpen}
+            onOpenChange={setDeployDialogOpen}
+            html={editableHtml}
+            css={editableCss}
+            js={editableJs}
+          />
+          <PublishWebsiteDialog
+            open={publishDialogOpen}
+            onOpenChange={setPublishDialogOpen}
+            html={editableHtml}
+            css={editableCss}
+            js={editableJs}
+            websiteId={websiteId}
+          />
+        </>
       )}
     </div>
   );
