@@ -60,6 +60,7 @@ const App = () => (
               <Route path="admin/payments" element={<AdminPaymentsPage />} />
               <Route path="admin/system-prompts" element={<AdminSystemPromptsPage />} />
               <Route path="admin/netlify" element={<AdminNetlifyPage />} />
+              <Route path="admin/pipeline" element={<AdminPipelinePage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
