@@ -87,14 +87,13 @@ export default function AdminPage() {
 
   const sections = [
     { label: "Users", desc: `${stats.users} total users`, icon: Users, color: "from-blue-500 to-blue-600", route: "users" },
-    { label: "AI Providers", desc: "Manage API keys & models", icon: Bot, color: "from-purple-500 to-purple-600", route: "ai-providers" },
+    { label: "AI Pipeline", desc: "Providers, API keys, models & prompts", icon: Workflow, color: "from-indigo-500 to-blue-600", route: "pipeline" },
+    { label: "AI Providers", desc: "Manage providers & API keys", icon: Bot, color: "from-purple-500 to-purple-600", route: "ai-providers" },
     { label: "System Prompts", desc: "Manage AI generation prompts", icon: FileText, color: "from-violet-500 to-violet-600", route: "system-prompts" },
-    { label: "AI Pipeline", desc: "4-stage code generation pipeline", icon: Workflow, color: "from-indigo-500 to-blue-600", route: "pipeline" },
     { label: "Plans", desc: `${stats.pro + stats.free > 0 ? "Manage" : "Create"} subscription plans`, icon: Package, color: "from-emerald-500 to-emerald-600", route: "plans" },
     { label: "Subscriptions", desc: `${stats.pro} Pro, ${stats.free} Free`, icon: Crown, color: "from-yellow-500 to-yellow-600", route: "subscriptions" },
     { label: "Websites", desc: `${stats.websites} total websites`, icon: Globe, color: "from-cyan-500 to-cyan-600", route: "websites" },
     { label: "Payments", desc: `${stats.pending} pending`, icon: CreditCard, color: stats.pending > 0 ? "from-red-500 to-red-600" : "from-gray-500 to-gray-600", route: "payments" },
-    { label: "Netlify", desc: "Deploy API key settings", icon: Globe, color: "from-teal-500 to-teal-600", route: "netlify" },
   ];
 
   return (

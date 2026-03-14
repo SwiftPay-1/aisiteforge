@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Globe } from "lucide-react";
+import { Wand2, Eye, Loader2, Download, ExternalLink, Sparkles, Brain, Cpu, FileCode, Code, CheckCircle2, Circle, Send, RotateCcw, Paperclip, X, Image, Monitor, Smartphone, Tablet, PanelLeft, ChevronDown, Globe, Search, Zap, Bug } from "lucide-react";
 import PublishWebsiteInline from "@/components/PublishWebsiteInline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CodeEditor from "@/components/CodeEditor";
@@ -28,11 +28,10 @@ interface ChatMessage {
 }
 
 const generationSteps = [
-  { id: "connect", label: "Connecting to AI", icon: Brain },
-  { id: "analyze", label: "Analyzing requirements", icon: Cpu },
-  { id: "html", label: "Writing HTML structure", icon: FileCode },
-  { id: "css", label: "Crafting CSS styles", icon: Sparkles },
-  { id: "js", label: "Adding JavaScript", icon: Code },
+  { id: "breakdown", label: "Breaking down prompt", icon: Search },
+  { id: "codegen", label: "Generating website code", icon: Zap },
+  { id: "bugfind", label: "Finding bugs & errors", icon: Bug },
+  { id: "finalize", label: "Finalizing code", icon: CheckCircle2 },
   { id: "save", label: "Saving website", icon: CheckCircle2 },
 ];
 
@@ -222,13 +221,13 @@ export default function GenerateWebsitePage() {
       setProgress(10);
 
       // Extract details from the prompt
-      // Simulate progress steps during non-streaming request
+      // Simulate pipeline progress steps during non-streaming request
       const progressInterval = setInterval(() => {
         setCurrentStep(prev => {
-          if (prev < 4) return prev + 1;
+          if (prev < 3) return prev + 1;
           return prev;
         });
-      }, 2500);
+      }, 3000);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
@@ -260,7 +259,7 @@ export default function GenerateWebsitePage() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setCurrentStep(5);
+      setCurrentStep(4);
       setProgress(90);
 
       const result = await response.json();
