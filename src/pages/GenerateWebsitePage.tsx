@@ -28,11 +28,10 @@ interface ChatMessage {
 }
 
 const generationSteps = [
-  { id: "connect", label: "Connecting to AI", icon: Brain },
-  { id: "analyze", label: "Analyzing requirements", icon: Cpu },
-  { id: "html", label: "Writing HTML structure", icon: FileCode },
-  { id: "css", label: "Crafting CSS styles", icon: Sparkles },
-  { id: "js", label: "Adding JavaScript", icon: Code },
+  { id: "breakdown", label: "Breaking down prompt", icon: Search },
+  { id: "codegen", label: "Generating website code", icon: Zap },
+  { id: "bugfind", label: "Finding bugs & errors", icon: Bug },
+  { id: "finalize", label: "Finalizing code", icon: CheckCircle2 },
   { id: "save", label: "Saving website", icon: CheckCircle2 },
 ];
 
