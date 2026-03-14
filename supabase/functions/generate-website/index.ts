@@ -6,22 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface ProviderConfig {
-  id: string;
-  name: string;
-  base_url: string;
-  models: { id: string; name: string; supports_tools?: boolean }[];
-}
-
-interface ApiKeyConfig {
-  id: string;
-  api_key: string;
-  provider_id: string;
-}
-
-// Providers that should NEVER use tool calling (they fail or return broken formats)
-const NO_TOOL_PROVIDERS = ["groq", "huggingface", "replicate"];
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -29,26 +13,18 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const adminClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
+    // Check plan limits
     const today = new Date().toISOString().split("T")[0];
-    const adminClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    // Check plan and daily usage
     const { data: profile } = await adminClient.from("profiles").select("plan").eq("user_id", user.id).single();
-    const plan = profile?.plan || "free";
-
-    if (plan === "free") {
+    if ((profile?.plan || "free") === "free") {
       const { data: usage } = await adminClient.from("daily_usage").select("generation_count").eq("user_id", user.id).eq("usage_date", today).single();
       if (usage && usage.generation_count >= 3) {
         return new Response(JSON.stringify({ error: "Daily limit reached (3/day). Upgrade to Pro for unlimited!" }), {
@@ -57,53 +33,100 @@ serve(async (req) => {
       }
     }
 
-    const { businessName, category, description, theme, providerId, modelId } = await req.json();
+    const { businessName, category, description, theme } = await req.json();
 
-    // Get provider and keys from DB
-    const { provider, apiKey } = await getProviderAndKey(adminClient, providerId);
+    // Fetch pipeline stages and prompts
+    const { data: stages } = await adminClient.from("pipeline_stages").select("*").eq("is_active", true).order("stage_order");
+    const { data: allPrompts } = await adminClient.from("pipeline_prompts").select("*").eq("is_active", true).order("sort_order");
 
-    // Get system prompt from DB (use default or first active)
-    const systemPrompt = await getSystemPrompt(adminClient);
-    const userPrompt = buildUserPrompt(businessName, category, description, theme);
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    const selectedModel = modelId || (provider.models[0]?.id) || "llama-3.3-70b-versatile";
-    // Never use tools for providers known to fail
-    const useTools = !NO_TOOL_PROVIDERS.includes(provider.name);
+    const userPrompt = `Build a COMPLETE, PRODUCTION-READY ${theme} website for "${businessName}" (${category}).
+Business description: ${description}
 
-    // Try with selected provider
-    let websiteData = await tryGenerate(provider, apiKey, systemPrompt, userPrompt, selectedModel, useTools);
+CRITICAL RULES:
+- Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, testimonials, contact, footer) with realistic content.
+- DO NOT use any images (<img> tags) unless the user specifically asks for images. Instead, use CSS-based 3D designs, gradients, geometric shapes, SVG patterns, CSS animations, and creative visual elements to make it visually stunning.
+- Use CSS 3D transforms, perspective, box-shadows, and gradients to create depth and visual interest.
+- Make it look like a $5000+ agency-built website.
+- Use colors and styling that match the "${theme}" theme perfectly.
+- Return ONLY a JSON object with keys: html, css, js, sections.`;
 
+    // ===== STAGE 1: BREAKDOWN =====
+    const breakdownStage = stages?.find((s: any) => s.name === "breakdown");
+    const breakdownPrompt = getStagePrompt(allPrompts, breakdownStage?.id);
+    
+    console.log("Stage 1: Breaking down prompt...");
+    const breakdownResult = await callLovableAI(LOVABLE_API_KEY, 
+      breakdownPrompt || "You are a requirements analyst. Break down the user's website request into detailed technical requirements. List sections needed, design elements, color scheme, typography, animations, and functionality. Be specific and thorough. Return as structured text.",
+      userPrompt,
+      "google/gemini-2.5-flash"
+    );
+    console.log("Breakdown complete:", breakdownResult?.substring(0, 200));
+
+    // ===== STAGE 2: CODE GENERATION =====
+    const codegenStage = stages?.find((s: any) => s.name === "code_generation");
+    const codegenPrompt = getStagePrompt(allPrompts, codegenStage?.id);
+    
+    // Try stage-specific provider first, fallback to Lovable AI
+    let websiteData = null;
+    
+    // Try with configured provider for code generation stage
+    if (codegenStage?.default_provider) {
+      websiteData = await tryStageProvider(adminClient, codegenStage, codegenPrompt, userPrompt, breakdownResult);
+    }
+    
+    // Fallback to Lovable AI gateway
     if (!websiteData) {
-      // Fallback: try Lovable AI gateway
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (LOVABLE_API_KEY) {
-        console.log("Falling back to Lovable AI gateway");
-        websiteData = await tryLovableGateway(LOVABLE_API_KEY, systemPrompt, userPrompt);
-      }
+      console.log("Stage 2: Generating code via Lovable AI...");
+      const systemPrompt = codegenPrompt || buildDefaultCodegenPrompt();
+      const enhancedPrompt = `${userPrompt}\n\n--- REQUIREMENTS BREAKDOWN ---\n${breakdownResult || "Standard 8-section website"}`;
+      
+      const codeResult = await callLovableAI(LOVABLE_API_KEY, 
+        systemPrompt + "\n\nIMPORTANT: Return ONLY a raw JSON object with keys: html, css, js, sections. No markdown, no code blocks. Just pure JSON starting with { and ending with }.",
+        enhancedPrompt,
+        "google/gemini-2.5-flash"
+      );
+      websiteData = parseWebsiteJSON(codeResult);
     }
 
     if (!websiteData) {
-      // Try other providers with available keys
-      const { data: allProviders } = await adminClient.from("ai_providers").select("*").eq("is_active", true).neq("id", provider.id).order("sort_order");
-      for (const altProvider of (allProviders || [])) {
-        const { data: altKeys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", altProvider.id).eq("is_active", true);
-        if (!altKeys?.length) continue;
-        const altKey = altKeys[Math.floor(Math.random() * altKeys.length)];
-        const altConfig: ProviderConfig = { id: altProvider.id, name: altProvider.name, base_url: altProvider.base_url, models: altProvider.models || [] };
-        const defaultModel = (altProvider.models as any[])?.[0]?.id;
-        const altUseTools = !NO_TOOL_PROVIDERS.includes(altProvider.name);
-        websiteData = await tryGenerate(altConfig, altKey, systemPrompt, userPrompt, defaultModel, altUseTools);
-        if (websiteData) {
-          await adminClient.from("ai_api_keys").update({ usage_count: (altKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", altKey.id);
-          break;
-        }
-      }
-    }
-
-    if (!websiteData) {
-      return new Response(JSON.stringify({ error: "All AI providers failed. Please check your API keys in admin settings." }), {
+      return new Response(JSON.stringify({ error: "Code generation failed. Please try again." }), {
         status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ===== STAGE 3: BUG FINDER =====
+    const bugStage = stages?.find((s: any) => s.name === "bug_finder");
+    const bugPrompt = getStagePrompt(allPrompts, bugStage?.id);
+    
+    if (bugStage?.is_active !== false) {
+      console.log("Stage 3: Finding bugs...");
+      const bugReport = await callLovableAI(LOVABLE_API_KEY,
+        bugPrompt || "You are a senior code reviewer. Analyze the following HTML/CSS/JS code for bugs, errors, broken layouts, missing closing tags, CSS issues, JS errors, accessibility problems, and responsive design issues. List each bug with a fix. Be thorough.",
+        `Review this website code for bugs:\n\nHTML:\n${websiteData.html.substring(0, 8000)}\n\nCSS:\n${websiteData.css.substring(0, 4000)}\n\nJS:\n${websiteData.js.substring(0, 2000)}`,
+        "google/gemini-2.5-flash"
+      );
+      console.log("Bug report:", bugReport?.substring(0, 200));
+
+      // ===== STAGE 4: FINALIZE =====
+      const finalizeStage = stages?.find((s: any) => s.name === "finalize");
+      const finalizePrompt = getStagePrompt(allPrompts, finalizeStage?.id);
+      
+      if (finalizeStage?.is_active !== false && bugReport && bugReport.length > 50) {
+        console.log("Stage 4: Finalizing code...");
+        const fixedCode = await callLovableAI(LOVABLE_API_KEY,
+          finalizePrompt || "You are a code fixer. Given the original code and a bug report, fix ALL identified issues. Apply patches, ensure proper closing tags, fix CSS responsive issues, and validate JS. Return ONLY a JSON object with keys: html, css, js, sections. No markdown.",
+          `Original HTML:\n${websiteData.html}\n\nOriginal CSS:\n${websiteData.css}\n\nOriginal JS:\n${websiteData.js}\n\n--- BUG REPORT ---\n${bugReport}\n\nFix all bugs and return the corrected code as JSON with keys: html, css, js, sections.`,
+          "google/gemini-2.5-flash"
+        );
+        const fixedData = parseWebsiteJSON(fixedCode);
+        if (fixedData && (fixedData.html.length > 100 || fixedData.css.length > 100)) {
+          console.log("Applied bug fixes");
+          websiteData = fixedData;
+        }
+      }
     }
 
     // Save website
@@ -113,7 +136,7 @@ serve(async (req) => {
       js_content: websiteData.js, preview_data: websiteData.sections,
     }).select().single();
 
-    if (dbError) { console.error("DB error:", dbError); throw new Error("Failed to save website"); }
+    if (dbError) throw new Error("Failed to save website");
 
     // Update daily usage
     const { data: existingUsage } = await adminClient.from("daily_usage").select("id, generation_count").eq("user_id", user.id).eq("usage_date", today).single();
@@ -121,11 +144,6 @@ serve(async (req) => {
       await adminClient.from("daily_usage").update({ generation_count: existingUsage.generation_count + 1 }).eq("id", existingUsage.id);
     } else {
       await adminClient.from("daily_usage").insert({ user_id: user.id, usage_date: today, generation_count: 1 });
-    }
-
-    // Update API key usage count
-    if (apiKey?.id) {
-      await adminClient.from("ai_api_keys").update({ usage_count: (apiKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", apiKey.id);
     }
 
     return new Response(JSON.stringify({ website, generated: websiteData }), {
@@ -139,247 +157,115 @@ serve(async (req) => {
   }
 });
 
-async function getSystemPrompt(adminClient: any): Promise<string> {
-  // Try to get default prompt from DB
-  const { data: defaultPrompt } = await adminClient
-    .from("system_prompts")
-    .select("prompt_text")
-    .eq("is_default", true)
-    .eq("is_active", true)
-    .single();
-  
-  if (defaultPrompt?.prompt_text) return defaultPrompt.prompt_text;
-
-  // Fallback to any active prompt
-  const { data: anyPrompt } = await adminClient
-    .from("system_prompts")
-    .select("prompt_text")
-    .eq("is_active", true)
-    .order("sort_order")
-    .limit(1)
-    .single();
-
-  if (anyPrompt?.prompt_text) return anyPrompt.prompt_text;
-
-  // Hardcoded fallback
-  return buildFallbackSystemPrompt();
+function getStagePrompt(allPrompts: any[] | null, stageId?: string): string | null {
+  if (!allPrompts || !stageId) return null;
+  const stagePrompts = allPrompts.filter((p: any) => p.stage_id === stageId);
+  const defaultPrompt = stagePrompts.find((p: any) => p.is_default);
+  return (defaultPrompt || stagePrompts[0])?.prompt_text || null;
 }
 
-function buildFallbackSystemPrompt(): string {
-  return `You are a world-class web developer. Return ONLY a valid JSON object with keys: html, css, js, sections.
-- html = inner body HTML only (no DOCTYPE/html/head/body tags)
-- css = complete CSS with @import for Google Fonts and Font Awesome 6
-- js = complete JavaScript
-- sections = array of {type, title, content}
-IMPORTANT: Return ONLY valid JSON. No markdown, no code blocks.`;
-}
-
-async function getProviderAndKey(adminClient: any, requestedProviderId?: string) {
-  let provider: ProviderConfig;
-  let apiKey: ApiKeyConfig & { usage_count?: number } | null = null;
-
-  if (requestedProviderId) {
-    const { data: p } = await adminClient.from("ai_providers").select("*").eq("id", requestedProviderId).eq("is_active", true).single();
-    if (p) {
-      provider = { id: p.id, name: p.name, base_url: p.base_url, models: p.models || [] };
-      const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", p.id).eq("is_active", true).order("usage_count");
-      if (keys?.length) apiKey = keys[0];
-    }
-  }
-
-  if (!provider!) {
-    const { data: p } = await adminClient.from("ai_providers").select("*").eq("is_default", true).eq("is_active", true).single();
-    if (p) {
-      provider = { id: p.id, name: p.name, base_url: p.base_url, models: p.models || [] };
-      const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", p.id).eq("is_active", true).order("usage_count");
-      if (keys?.length) apiKey = keys[0];
-    }
-  }
-
-  if (!provider!) {
-    const { data: providers } = await adminClient.from("ai_providers").select("*").eq("is_active", true).order("sort_order");
-    for (const p of (providers || [])) {
-      const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", p.id).eq("is_active", true).order("usage_count");
-      if (keys?.length) {
-        provider = { id: p.id, name: p.name, base_url: p.base_url, models: p.models || [] };
-        apiKey = keys[0];
-        break;
-      }
-    }
-  }
-
-  if (!provider!) {
-    provider = { id: "", name: "lovable", base_url: "", models: [] };
-  }
-
-  return { provider, apiKey };
-}
-
-async function tryGenerate(
-  provider: ProviderConfig,
-  apiKey: ApiKeyConfig | null,
-  systemPrompt: string,
-  userPrompt: string,
-  modelId?: string,
-  useTools: boolean = false
-): Promise<{ html: string; css: string; js: string; sections: any[] } | null> {
-  if (!apiKey || !provider.base_url) return null;
-
-  const model = modelId || (provider.models[0]?.id) || "llama-3.3-70b-versatile";
-
-  const providerMaxTokens: Record<string, number> = {
-    groq: 32000, google: 64000, openai: 16000, deepseek: 64000, xai: 32000, huggingface: 16000,
-  };
-  const maxTokens = providerMaxTokens[provider.name] || 32000;
-
+async function tryStageProvider(adminClient: any, stage: any, stagePrompt: string | null, userPrompt: string, breakdownResult: string | null) {
   try {
-    console.log(`Trying provider: ${provider.name}, model: ${model}, useTools: ${useTools}`);
+    const { data: provider } = await adminClient.from("ai_providers").select("*").eq("name", stage.default_provider).eq("is_active", true).single();
+    if (!provider) return null;
+    
+    const { data: keys } = await adminClient.from("ai_api_keys").select("*").eq("provider_id", provider.id).eq("is_active", true).order("usage_count");
+    if (!keys?.length) return null;
+
+    const apiKey = keys[0];
+    const model = stage.default_model || (provider.models as any[])?.[0]?.id;
+    if (!model || !provider.base_url) return null;
+
+    const systemPrompt = (stagePrompt || buildDefaultCodegenPrompt()) + "\n\nReturn ONLY a raw JSON object. No markdown.";
+    const enhancedPrompt = `${userPrompt}\n\n--- REQUIREMENTS ---\n${breakdownResult || "Standard website"}`;
 
     const body: any = {
-      model,
-      messages: [
-        { role: "system", content: systemPrompt + "\n\nIMPORTANT: Return ONLY a raw JSON object. No markdown code blocks, no explanations, no ```json wrapping. Just the pure JSON starting with { and ending with }." },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      max_tokens: maxTokens,
+      model, temperature: 0.7, max_tokens: 32000,
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: enhancedPrompt }],
     };
 
-    // Add response_format for providers that support it
-    if (provider.name === "groq" || provider.name === "openai" || provider.name === "deepseek") {
+    if (["groq", "openai", "deepseek"].includes(provider.name)) {
       body.response_format = { type: "json_object" };
     }
 
-    if (useTools) {
-      body.tools = buildTools();
-      body.tool_choice = { type: "function", function: { name: "create_website" } };
-    }
-
+    console.log(`Stage 2: Trying provider ${provider.name}, model ${model}`);
     const response = await fetch(provider.base_url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey.api_key}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey.api_key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Provider ${provider.name} error: ${response.status} ${errorText}`);
-      return null;
-    }
+    if (!response.ok) { console.error(`Provider ${provider.name} error: ${response.status}`); return null; }
 
     const aiData = await response.json();
-    return extractWebsiteData(aiData);
+    const content = aiData.choices?.[0]?.message?.content || "";
+    
+    // Update key usage
+    await adminClient.from("ai_api_keys").update({ usage_count: (apiKey.usage_count || 0) + 1, last_used_at: new Date().toISOString() }).eq("id", apiKey.id);
+    
+    return parseWebsiteJSON(content);
   } catch (e) {
-    console.error(`Provider ${provider.name} exception:`, e);
+    console.error("Stage provider error:", e);
     return null;
   }
 }
 
-async function tryLovableGateway(
-  apiKey: string,
-  systemPrompt: string,
-  userPrompt: string,
-): Promise<{ html: string; css: string; js: string; sections: any[] } | null> {
+async function callLovableAI(apiKey: string, systemPrompt: string, userPrompt: string, model: string = "google/gemini-2.5-flash"): Promise<string | null> {
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt + "\n\nReturn ONLY valid JSON. No markdown." },
-          { role: "user", content: userPrompt },
-        ],
+        model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
         max_tokens: 64000,
       }),
     });
 
     if (!response.ok) {
-      console.error("Lovable gateway error:", response.status);
+      console.error("Lovable AI error:", response.status);
+      if (response.status === 429) throw new Error("Rate limited. Please try again shortly.");
+      if (response.status === 402) throw new Error("AI credits exhausted. Please contact admin.");
       return null;
     }
 
-    const aiData = await response.json();
-    return extractWebsiteData(aiData);
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || null;
   } catch (e) {
-    console.error("Lovable gateway exception:", e);
+    if (e instanceof Error && (e.message.includes("Rate") || e.message.includes("credits"))) throw e;
+    console.error("Lovable AI exception:", e);
     return null;
   }
 }
 
-function extractWebsiteData(aiData: any): { html: string; css: string; js: string; sections: any[] } | null {
-  // 1. Try tool call first
-  const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-  if (toolCall?.function?.arguments) {
-    try {
-      const args = JSON.parse(toolCall.function.arguments);
-      if (args.html || args.css) {
-        console.log("Extracted from tool_call");
-        return { html: args.html || "", css: args.css || "", js: args.js || "", sections: args.sections || [] };
-      }
-    } catch { /* fall through */ }
-  }
+function parseWebsiteJSON(raw: string | null): { html: string; css: string; js: string; sections: any[] } | null {
+  if (!raw || raw.length < 50) return null;
 
-  const rawContent = aiData.choices?.[0]?.message?.content || "";
-  if (!rawContent || rawContent.length < 50) return null;
+  // Try markdown code block
+  const jsonBlock = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const toParse = jsonBlock ? jsonBlock[1] : raw;
 
-  // 2. Try parsing content that starts with <function=create_website> (Groq format)
-  const funcMatch = rawContent.match(/<function=create_website>([\s\S]*?)(?:<\/function>|$)/);
-  if (funcMatch) {
-    const parsed = cleanAndParseJSON(funcMatch[1]);
-    if (parsed && (parsed.html || parsed.css)) {
-      console.log("Extracted from <function> tag format");
-      return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
-    }
-  }
-
-  // 3. Try direct JSON parse of entire content
-  const parsed = cleanAndParseJSON(rawContent);
+  const parsed = cleanAndParse(toParse);
   if (parsed && (parsed.html || parsed.css)) {
-    console.log("Extracted from direct JSON parse");
-    return { html: (parsed.html as string) || "", css: (parsed.css as string) || "", js: (parsed.js as string) || "", sections: (parsed.sections as any[]) || [] };
+    return { html: String(parsed.html || ""), css: String(parsed.css || ""), js: String(parsed.js || ""), sections: (parsed.sections as any[]) || [] };
   }
 
-  // 4. Try extracting from markdown code blocks
-  const jsonBlockMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonBlockMatch) {
-    const blockParsed = cleanAndParseJSON(jsonBlockMatch[1]);
-    if (blockParsed && (blockParsed.html || blockParsed.css)) {
-      console.log("Extracted from markdown JSON block");
-      return { html: (blockParsed.html as string) || "", css: (blockParsed.css as string) || "", js: (blockParsed.js as string) || "", sections: (blockParsed.sections as any[]) || [] };
-    }
+  // Separate code blocks
+  const htmlMatch = raw.match(/```html\s*([\s\S]*?)```/i);
+  const cssMatch = raw.match(/```css\s*([\s\S]*?)```/i);
+  const jsMatch = raw.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
+  if (htmlMatch || cssMatch) {
+    return { html: htmlMatch?.[1]?.trim() || "", css: cssMatch?.[1]?.trim() || "", js: jsMatch?.[1]?.trim() || "", sections: [] };
   }
 
-  // 5. Extract separate HTML/CSS/JS code blocks
-  const htmlMatch = rawContent.match(/```html\s*([\s\S]*?)```/i);
-  const cssMatch = rawContent.match(/```css\s*([\s\S]*?)```/i);
-  const jsMatch = rawContent.match(/```(?:javascript|js)\s*([\s\S]*?)```/i);
-  if (htmlMatch || cssMatch || jsMatch) {
-    console.log("Extracted from separate code blocks");
-    return {
-      html: htmlMatch?.[1]?.trim() || "",
-      css: cssMatch?.[1]?.trim() || "",
-      js: jsMatch?.[1]?.trim() || "",
-      sections: [],
-    };
+  // Raw HTML fallback
+  if (raw.includes("<") && raw.includes(">") && raw.length > 200) {
+    return { html: raw, css: "", js: "", sections: [] };
   }
-
-  // 6. Last resort: if content looks like HTML, treat as HTML
-  if (rawContent.includes("<") && rawContent.includes(">") && rawContent.length > 200) {
-    console.log("Treating raw content as HTML");
-    return { html: rawContent, css: "", js: "", sections: [] };
-  }
-
   return null;
 }
 
-function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
+function cleanAndParse(raw: string): Record<string, unknown> | null {
   if (!raw || raw.length < 10) return null;
   let cleaned = raw.replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
   const firstBrace = cleaned.indexOf("{");
@@ -391,7 +277,6 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
   try { return JSON.parse(cleaned); } catch { /* try repair */ }
 
-  // Repair truncated JSON
   let repaired = cleaned.replace(/,\s*$/, "");
   let inString = false, escape = false;
   const stack: string[] = [];
@@ -410,40 +295,21 @@ function cleanAndParseJSON(raw: string): Record<string, unknown> | null {
   try { return JSON.parse(repaired); } catch { return null; }
 }
 
-function buildUserPrompt(businessName: string, category: string, description: string, theme: string): string {
-  return `Build a COMPLETE, PRODUCTION-READY ${theme} website for "${businessName}" (${category}).
-Business description: ${description}
+function buildDefaultCodegenPrompt(): string {
+  return `You are a world-class web developer. Create production-ready websites with stunning CSS-based 3D designs.
 
-Create ALL 8 sections (hero, nav, about, services/features, portfolio/gallery, testimonials, contact, footer) with realistic content. Make it look like a $5000+ agency-built website. Use colors and styling that match the "${theme}" theme perfectly.
+CRITICAL: DO NOT use any <img> tags or external images unless specifically requested. Instead use:
+- CSS 3D transforms with perspective for depth
+- Gradient backgrounds and overlays
+- SVG shapes and patterns inline
+- CSS animations and transitions
+- Box-shadows for layered depth effects
+- Geometric shapes using CSS
+- Glass morphism effects
 
-Return ONLY a JSON object with keys: html, css, js, sections.`;
-}
-
-function buildTools(): any[] {
-  return [{
-    type: "function",
-    function: {
-      name: "create_website",
-      description: "Create a complete, production-ready website with all 8 sections",
-      parameters: {
-        type: "object",
-        properties: {
-          html: { type: "string", description: "Complete inner body HTML with ALL 8 sections." },
-          css: { type: "string", description: "Complete CSS with @import for Google Fonts and Font Awesome 6. 300+ lines." },
-          js: { type: "string", description: "Complete JavaScript: smooth scroll, mobile menu, animations, form validation." },
-          sections: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: { type: { type: "string" }, title: { type: "string" }, content: { type: "string" } },
-              required: ["type", "title", "content"],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["html", "css", "js"],
-        additionalProperties: false,
-      },
-    },
-  }];
+Return ONLY a valid JSON object with keys: html, css, js, sections.
+- html = inner body HTML only (no DOCTYPE/html/head/body tags)
+- css = complete CSS with @import for Google Fonts and Font Awesome 6, 300+ lines
+- js = complete JavaScript for interactivity
+- sections = array of {type, title, content}`;
 }
