@@ -25,6 +25,7 @@ import AdminWebsitesPage from "./pages/admin/AdminWebsitesPage";
 import AdminPaymentsPage from "./pages/admin/AdminPaymentsPage";
 import AdminSystemPromptsPage from "./pages/admin/AdminSystemPromptsPage";
 import AdminNetlifyPage from "./pages/admin/AdminNetlifyPage";
+import AdminPipelinePage from "./pages/admin/AdminPipelinePage";
 import ProjectPage from "./pages/ProjectPage";
 import NotFound from "./pages/NotFound";
 
