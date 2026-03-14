@@ -259,7 +259,7 @@ export default function GenerateWebsitePage() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      setCurrentStep(5);
+      setCurrentStep(4);
       setProgress(90);
 
       const result = await response.json();
