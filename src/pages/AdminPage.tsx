@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { Users, Globe, CreditCard, Shield, Crown, Code2, Package, Bot, FileText } from "lucide-react";
+import { Users, Globe, CreditCard, Shield, Crown, Code2, Package, Bot, FileText, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -89,6 +89,7 @@ export default function AdminPage() {
     { label: "Users", desc: `${stats.users} total users`, icon: Users, color: "from-blue-500 to-blue-600", route: "users" },
     { label: "AI Providers", desc: "Manage API keys & models", icon: Bot, color: "from-purple-500 to-purple-600", route: "ai-providers" },
     { label: "System Prompts", desc: "Manage AI generation prompts", icon: FileText, color: "from-violet-500 to-violet-600", route: "system-prompts" },
+    { label: "AI Pipeline", desc: "4-stage code generation pipeline", icon: Workflow, color: "from-indigo-500 to-blue-600", route: "pipeline" },
     { label: "Plans", desc: `${stats.pro + stats.free > 0 ? "Manage" : "Create"} subscription plans`, icon: Package, color: "from-emerald-500 to-emerald-600", route: "plans" },
     { label: "Subscriptions", desc: `${stats.pro} Pro, ${stats.free} Free`, icon: Crown, color: "from-yellow-500 to-yellow-600", route: "subscriptions" },
     { label: "Websites", desc: `${stats.websites} total websites`, icon: Globe, color: "from-cyan-500 to-cyan-600", route: "websites" },

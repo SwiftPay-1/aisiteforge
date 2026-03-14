@@ -225,6 +225,95 @@ export type Database = {
           },
         ]
       }
+      pipeline_prompts: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          prompt_text: string
+          sort_order: number
+          stage_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          prompt_text: string
+          sort_order?: number
+          stage_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          prompt_text?: string
+          sort_order?: number
+          stage_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_prompts_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_stages: {
+        Row: {
+          created_at: string
+          default_model: string | null
+          default_provider: string | null
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean
+          name: string
+          providers: Json
+          stage_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_model?: string | null
+          default_provider?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean
+          name: string
+          providers?: Json
+          stage_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_model?: string | null
+          default_provider?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          providers?: Json
+          stage_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
