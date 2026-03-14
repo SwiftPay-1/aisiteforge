@@ -221,13 +221,13 @@ export default function GenerateWebsitePage() {
       setProgress(10);
 
       // Extract details from the prompt
-      // Simulate progress steps during non-streaming request
+      // Simulate pipeline progress steps during non-streaming request
       const progressInterval = setInterval(() => {
         setCurrentStep(prev => {
-          if (prev < 4) return prev + 1;
+          if (prev < 3) return prev + 1;
           return prev;
         });
-      }, 2500);
+      }, 3000);
 
       const response = await fetch(`${supabaseUrl}/functions/v1/generate-website`, {
         method: "POST",
